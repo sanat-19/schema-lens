@@ -6,6 +6,8 @@
 // node's background image. In "names only" mode nodes are just labels,
 // which is what keeps a 200-table schema fast and readable.
 
+import { schemaColors, mix } from './colors.js';
+
 cytoscape.use(cytoscapeDagre);
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
@@ -34,7 +36,11 @@ export function createGraph(container, { onSelect, onClear }) {
   let layoutName = 'dagre';
   let loaded = false;
   let theme = readTheme();
+  let colors = new Map(); // schema name → colour, for the schemas on screen
   cy.style(stylesheet(theme));
+
+  // look is how one table is drawn right now: theme, mode and schema colour.
+  const look = (table) => nodeLook(table, theme, showColumns, colors.get(table.schema));
 
   // Opening the details panel narrows the graph; Cytoscape has to be told.
   new ResizeObserver(() => cy.resize()).observe(container);
@@ -46,7 +52,7 @@ export function createGraph(container, { onSelect, onClear }) {
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     theme = readTheme();
     cy.style(stylesheet(theme));
-    cy.nodes().forEach((n) => n.data(nodeLook(n.data('table'), theme, showColumns)));
+    cy.nodes().forEach((n) => n.data(look(n.data('table'))));
   });
 
   // update brings the graph in line with a new schema. The first time it
@@ -56,6 +62,7 @@ export function createGraph(container, { onSelect, onClear }) {
   // exists moves.
   function update(schema, { positions } = {}) {
     const severity = worstSeverityByTable(schema.findings || []);
+    colors = schemaColors(schema.tables.map((t) => t.schema));
     const tables = new Map(schema.tables.map((t) => [tableId(t), t]));
     const relations = new Map((schema.relations || []).map((r) => [r.id, r]));
     const added = [];
@@ -67,9 +74,10 @@ export function createGraph(container, { onSelect, onClear }) {
       cy.nodes().forEach((n) => { if (!tables.has(n.id())) removed.push(n); });
 
       for (const [id, table] of tables) {
-        const sig = JSON.stringify(table) + '|' + (severity.get(id) || '');
+        // The colour is part of the signature: a new schema can shift colours.
+        const sig = JSON.stringify(table) + '|' + (severity.get(id) || '') + '|' + (colors.get(table.schema) || '');
         const node = cy.getElementById(id);
-        const data = { table, sig, ...nodeLook(table, theme, showColumns) };
+        const data = { table, sig, ...look(table) };
         if (node.empty()) {
           added.push(cy.add({ group: 'nodes', data: { id, ...data } }));
         } else if (node.data('sig') !== sig) {
@@ -249,7 +257,7 @@ export function createGraph(container, { onSelect, onClear }) {
   function setShowColumns(on) {
     if (on === showColumns) return;
     showColumns = on;
-    cy.batch(() => cy.nodes().forEach((n) => n.data(nodeLook(n.data('table'), theme, showColumns))));
+    cy.batch(() => cy.nodes().forEach((n) => n.data(look(n.data('table')))));
     if (loaded) runLayout(); // node sizes changed a lot
   }
 
@@ -294,7 +302,7 @@ function stylesheet(t) {
         shape: 'round-rectangle',
         width: 'data(w)',
         height: 'data(h)',
-        'background-color': t.nodeBg,
+        'background-color': 'data(bg)',
         'background-image': 'data(image)',
         'background-fit': 'none',
         'background-clip': 'node',
@@ -302,7 +310,7 @@ function stylesheet(t) {
         'background-height': 'data(h)',
         'background-image-smoothing': 'yes',
         'border-width': 1,
-        'border-color': t.nodeBorder,
+        'border-color': 'data(border)',
         label: 'data(text)',
         color: t.text,
         'font-family': SANS,
@@ -346,19 +354,27 @@ function stylesheet(t) {
   ];
 }
 
-// nodeLook returns the node's size and picture for the current mode.
-function nodeLook(table, t, showColumns) {
+// nodeLook returns the node's size, picture and colours for the current
+// mode. A table in a coloured schema gets a clear tint on its header (or on
+// the whole box in names-only mode), a soft tint on the body, and a border
+// in the same colour; findings still override the border.
+function nodeLook(table, t, showColumns, color) {
+  const tint = color
+    ? { header: mix(color, t.nodeBg, 0.32), body: mix(color, t.nodeBg, 0.1), border: mix(color, t.nodeBg, 0.6) }
+    : { header: t.nodeHeader, body: t.nodeBg, border: t.nodeBorder };
+
   if (!showColumns) {
     const text = table.schema === 'public' ? table.name : tableId(table);
-    return { text, image: 'none', w: textWidth(text, `600 13px ${SANS}`) + 28, h: 34 };
+    return { text, image: 'none', w: textWidth(text, `600 13px ${SANS}`) + 28, h: 34,
+      bg: color ? tint.header : t.nodeBg, border: tint.border };
   }
-  const card = tableCard(table, t);
-  return { text: '', image: card.url, w: card.width, h: card.height };
+  const card = tableCard(table, t, tint.header);
+  return { text: '', image: card.url, w: card.width, h: card.height, bg: tint.body, border: tint.border };
 }
 
 // tableCard draws one table as an SVG: a header with the name and row count,
 // then a row per column with its PK/FK/unique markers and type.
-function tableCard(table, t) {
+function tableCard(table, t, headerColor) {
   const title = table.schema === 'public' ? table.name : tableId(table);
   const meta = rowsText(table);
   const headerFont = `600 13px ${SANS}`;
@@ -388,7 +404,7 @@ function tableCard(table, t) {
   const height = HEADER_H + (rows.length + (more ? 1 : 0)) * ROW_H + 6;
 
   const parts = [
-    `<rect width="${width}" height="${HEADER_H}" fill="${t.nodeHeader}"/>`,
+    `<rect width="${width}" height="${HEADER_H}" fill="${headerColor}"/>`,
     `<text x="${PAD}" y="20" font-family='${SANS}' font-size="13" font-weight="600" fill="${t.text}">${esc(title)}</text>`,
     `<text x="${width - PAD}" y="20" text-anchor="end" font-family='${SANS}' font-size="11" fill="${t.muted}">${esc(meta)}</text>`,
   ];

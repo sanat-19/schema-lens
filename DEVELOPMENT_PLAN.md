@@ -613,6 +613,39 @@ table is where it was left.
 
 ---
 
+## Step 21 — Colour tables by schema  `[x]`
+
+**Why.** A database is often split into schemas: `public` for the app,
+`billing` for payments, `cart` for shopping. On the graph they all look the
+same, so you can't see at a glance which tables belong together, or when a
+relation crosses from one schema into another.
+
+**What we need.**
+- Every schema other than `public` gets its own colour: the card's header
+  gets a clear tint, the body a soft one. `public` keeps the plain look, so
+  the other schemas stand out. In "names only" mode the whole box is tinted.
+- Colours are handed out in alphabetical order of schema name from a fixed
+  palette (red, blue, green, purple, teal, amber, pink, brown), so `billing`
+  is always red in a database with only `billing` besides `public`. After
+  eight schemas the palette repeats.
+- Tints are mixed with the theme's card colour, so they work in both light
+  and dark mode and the text stays readable.
+- It must not be confused with findings: those stay as thick red/orange
+  *borders*; the schema colour is a *background*.
+- The same colour appears in the legend (one chip per schema), as a stripe
+  in the sidebar's table list, and on the schema badge in the details panel.
+- It follows live changes: create a new schema with a table and it gets a
+  colour straight away.
+
+**Packages.** None. A small `web/colors.js` shared by the graph and the
+page.
+
+**Done when.** In a browser test, `billing` tables are red-tinted, `public`
+tables are plain, a schema created live gets the next colour, and the
+legend lists them.
+
+---
+
 ## After Phase 1 (not built now)
 
 What we build here is shaped so these are easy later:

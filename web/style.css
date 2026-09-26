@@ -423,3 +423,26 @@ button.primary:disabled { opacity: .6; cursor: progress; }
 .saved-list .saved-meta { color: var(--muted); font-size: 12px; }
 .saved-list .saved-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .saved-list button.danger:hover { border-color: var(--high); color: var(--high); }
+
+/* --- schema colours ----------------------------------------------------------
+   --schema-color is set per element from web/colors.js. */
+
+.table-list li.in-schema { box-shadow: inset 3px 0 0 var(--schema-color); }
+
+.schema-legend { display: inline-flex; gap: 10px; flex-wrap: wrap; }
+.schema-legend[hidden] { display: none; }
+.schema-legend span { display: inline-flex; align-items: center; gap: 5px; color: var(--text); }
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--schema-color) 35%, var(--node-bg));
+  border: 1px solid var(--schema-color);
+}
+
+.schema-badge[style] {
+  background: color-mix(in srgb, var(--schema-color) 18%, transparent);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--schema-color) 55%, transparent);
+}

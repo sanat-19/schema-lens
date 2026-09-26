@@ -235,3 +235,24 @@ Checked in headless Chromium: start with no flags, get a wrong-password
 error, connect through the form, confirm it's live, drag a table, save,
 switch to another database, open the saved graph, and the dragged table is
 back where it was left.
+
+### Colouring tables by schema
+
+- **`public` stays plain; every other schema gets a colour.** Plain `public`
+  is what makes the others stand out. In a database without `public`, every
+  schema is coloured.
+- **Colours go out in alphabetical order**, from a fixed palette of eight
+  (red, blue, green, purple, teal, amber, pink, brown). The same database
+  always gets the same colours, and the page and the graph work them out the
+  same way (`web/colors.js`). The trade-off: a new schema that sorts earlier
+  shifts the colours of the ones after it. We preferred predictable colours
+  over hashing names, which would clash as soon as two schemas hashed to the
+  same colour.
+- **A background tint, not a border.** Thick red/orange borders already mean
+  high/medium findings. The schema colour tints the header clearly and the
+  body softly, mixed with the theme's card colour, so it works in light and
+  dark mode and never hides a finding.
+
+Checked in headless Chromium in both themes: `billing` is red-tinted,
+`public` is plain, and a `cart` schema created live in psql turned blue
+within seconds while `billing` stayed red.
