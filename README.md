@@ -18,6 +18,10 @@ an interactive graph that follows the database as you migrate it.
 - **Read-only by design.** Every session runs with
   `default_transaction_read_only = on` and a statement timeout. Suggested fixes
   are text for you to copy; SchemaLens never runs them.
+- **Connect from the page.** Paste a connection URL or type host, user and
+  password, and the graph is drawn. Switch databases without restarting.
+- **Saved graphs.** Save a graph with its layout and open it again later,
+  without the database. The password is never saved.
 - **One binary.** The UI is built in, works offline, and needs no Node or CDN.
 
 ## Quickstart
@@ -39,10 +43,40 @@ docker compose exec postgres psql -U schemalens -d shop \
   -c "CREATE TABLE wishlists (id bigserial PRIMARY KEY, user_id bigint REFERENCES users(id))"
 ```
 
+## Connect from the browser
+
+Run `schemalens serve` with no flags and open http://127.0.0.1:8080. The page
+asks for a database: paste a `postgres://` URL, or enter host, port,
+database, user, password and SSL mode. Optionally, list which schemas to read.
+The graph is drawn as soon as the schema has been read, and it stays live.
+Use **Switch** to connect to another database. If a connection fails (say, a
+wrong password), the error is shown and the current graph stays.
+
+The password is used for the connection and kept in memory only. It is
+never written to disk, never logged, and never sent back to the page.
+
+![Connect screen with a saved graph](docs/screenshot-connect.png)
+
+## Saved graphs
+
+**Save** in the toolbar keeps the current graph: the schema at that moment
+(tables, relations and findings), where each table sits on screen, and which
+database it came from. Saved graphs are listed on the Connect screen:
+
+- **Open** shows it exactly as it was saved, without needing the database.
+- **Reconnect** fills in the connection form from where it came from. You
+  type the password, since it was never saved.
+- **Delete** removes it.
+
+They're JSON files, one per graph, in `~/.config/schemalens/graphs` (or the
+equivalent on macOS and Windows), readable only by you. Use `--data-dir` to
+keep them somewhere else, e.g. next to a project.
+
 ## Usage
 
 ```
-schemalens serve    --dsn <url> [--schemas public,billing] [--addr 127.0.0.1:8080] [--open]
+schemalens serve    [--addr 127.0.0.1:8080] [--open] [--data-dir dir]
+schemalens serve    --dsn <url> [--schemas public,billing] [--addr ...] [--open]
 schemalens serve    --from snapshot.json
 schemalens snapshot --dsn <url> [--schemas ...] -o snapshot.json
 schemalens export   --dsn <url> [--schemas ...] --format json|mermaid [-o file]
@@ -50,11 +84,12 @@ schemalens export   --dsn <url> [--schemas ...] --format json|mermaid [-o file]
 
 | Flag | Meaning |
 |---|---|
-| `--dsn` | Connection string. Defaults to `$DATABASE_URL`. The password is never printed. |
+| `--dsn` | Connection string. Defaults to `$DATABASE_URL`. With neither, `serve` opens on the Connect screen. The password is never printed. |
 | `--schemas` | Schemas to read. Defaults to every non-system schema. |
 | `--addr` | Where to serve the UI. Defaults to `127.0.0.1:8080`, local only, because it shows your schema. |
 | `--open` | Open the UI in your browser. |
 | `--from` | Show a saved snapshot instead of a live database. |
+| `--data-dir` | Where saved graphs are kept (default: your config directory). |
 | `--watch-interval` | How often to check for schema changes (default `2s`). |
 | `--stats-interval` | How often to refresh row counts, sizes and index usage (default `30s`). |
 
@@ -135,7 +170,8 @@ flowchart LR
 | `internal/graph` | Relations from FKs (cardinality, optionality) and relations guessed from column names. |
 | `internal/analyze` | The seven checks above. These are pure functions over the model, unit-tested without a database. |
 | `internal/render` | Mermaid `erDiagram` export. |
-| `internal/server` | The HTTP API, the Server-Sent Events stream, and the watcher that keeps the schema current. |
+| `internal/server` | The HTTP API, the Server-Sent Events stream, the watcher that keeps the schema current, and switching between databases and saved graphs. |
+| `internal/store` | Saved graphs on disk: one JSON file each, written atomically, readable only by you. |
 | `web/` | The UI: plain HTML, CSS and JS, embedded in the binary. |
 
 **Staying live without writing to your database:** Postgres can push schema
@@ -147,6 +183,13 @@ tell the browser. The UI then patches the graph rather than redrawing it.
 
 See [`DEVELOPMENT_PLAN.md`](DEVELOPMENT_PLAN.md) for how the project was built
 step by step, and [`DECISIONS.md`](DECISIONS.md) for the calls made along the way.
+
+**Keeping the connect endpoint safe:** `POST /api/connect` makes SchemaLens
+open database connections, so other websites must not be able to call it
+through your browser. The server only accepts JSON POSTs (a cross-site JSON
+POST needs a CORS preflight, which it never allows), rejects foreign
+`Origin` headers, and, when listening on localhost, rejects requests whose
+`Host` isn't localhost (which stops DNS rebinding).
 
 ## Development
 

@@ -11,11 +11,15 @@ import { connectLive } from './live.js';
 const $ = (id) => document.getElementById(id);
 
 const state = {
+  status: null,      // latest status from the server
+  sourceKey: undefined, // which source the graph shows; undefined until the first status, null for none
+  layout: null,      // saved positions to restore on the first draw of this source
+  ready: Promise.resolve(), // settles once the source's layout (if any) has arrived
   schema: null,
   version: null,     // version of the schema we're showing
   selected: null,    // table ID
   query: '',
-  loading: null,     // the fetch in flight, so events don't pile up requests
+  loading: false,    // a catchUp is running, so events don't pile up requests
   wantVersion: null, // newest version the server told us about
 };
 
@@ -24,24 +28,76 @@ const graph = createGraph($('graph'), {
   onClear: () => clearSelection(),
 });
 
-// --- loading ----------------------------------------------------------------
+// --- following the server -------------------------------------------------------
+
+// handleStatus is called with every status the server sends: on start, on
+// every event, and after connecting or opening a saved graph.
+async function handleStatus(status) {
+  state.status = status;
+  renderStatus(status);
+
+  const key = status.source?.key ?? null;
+  if (key !== state.sourceKey) {
+    await sourceChanged(status);
+  }
+  if (status.mode !== 'none') {
+    state.wantVersion = status.version;
+    catchUp();
+  }
+}
+
+// sourceChanged starts over for a different database or saved graph: a new
+// graph, not a patch of the old one.
+async function sourceChanged(status) {
+  state.sourceKey = status.source?.key ?? null;
+  state.schema = null;
+  state.version = null;
+  state.layout = null;
+  graph.reset();
+  clearSelection();
+
+  if (status.mode === 'none') {
+    clearSidebar();
+    showConnect({ canCancel: false });
+    return;
+  }
+  hideConnect();
+  if (status.source?.savedId) {
+    // The schema must not be drawn before the saved positions are here, or
+    // it would get a fresh layout instead. catchUp waits on this.
+    state.ready = fetch('/api/layout')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((layout) => { if (layout?.source === state.sourceKey) state.layout = layout; })
+      .catch(() => {});
+    await state.ready;
+  }
+}
 
 async function fetchSchema({ refresh = false } = {}) {
   const res = await fetch('/api/schema' + (refresh ? '?refresh=1' : ''));
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-  const version = Number(res.headers.get('X-Schema-Version'));
-  applySchema(await res.json(), version);
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+  if (res.headers.get('X-Schema-Source') !== state.sourceKey) {
+    // The server switched source while we were asking; its status event
+    // is on the way and will start the new graph.
+    return;
+  }
+  applySchema(await res.json(), Number(res.headers.get('X-Schema-Version')));
 }
 
 // catchUp fetches the schema if the server has a newer version than the one
-// on screen. If a fetch is already running, it runs once more afterwards.
+// on screen. Only one runs at a time; it loops until it has caught up.
 async function catchUp() {
   if (state.loading) return;
-  while (state.wantVersion !== null && state.wantVersion !== state.version) {
-    state.loading = fetchSchema().catch((err) => toast(`Couldn't load the schema: ${err.message}`));
-    await state.loading;
-    state.loading = null;
-    if (state.wantVersion !== state.version) await sleep(500); // server moved on meanwhile
+  state.loading = true;
+  try {
+    while (state.status?.mode !== 'none' && state.wantVersion !== null && state.wantVersion !== state.version) {
+      const key = state.sourceKey;
+      await state.ready;
+      await fetchSchema().catch((err) => toast(`Couldn't load the schema: ${err.message}`));
+      if (state.sourceKey === key && state.wantVersion !== state.version) await sleep(500); // server moved on meanwhile
+    }
+  } finally {
+    state.loading = false;
   }
 }
 
@@ -50,12 +106,17 @@ function applySchema(schema, version) {
   state.schema = schema;
   state.version = version;
 
-  if (first && schema.tables.length > 60) graph.setShowColumns(false); // keep big schemas readable
-  const rememberedMode = load('showColumns');
-  if (first && rememberedMode !== null) graph.setShowColumns(rememberedMode === 'true');
+  if (first) {
+    // Saved graphs reopen the way they were saved; otherwise use what this
+    // browser last chose, and names only for big schemas.
+    const remembered = load('showColumns');
+    if (state.layout?.showColumns !== undefined) graph.setShowColumns(state.layout.showColumns);
+    else if (remembered !== null) graph.setShowColumns(remembered === 'true');
+    else graph.setShowColumns(schema.tables.length <= 60);
+  }
   syncModeButtons();
 
-  const changes = graph.update(schema);
+  const changes = graph.update(schema, { positions: first ? state.layout?.positions : undefined });
 
   renderHeader();
   renderTableList();
@@ -88,8 +149,20 @@ function announce({ added, removed, changed }) {
 
 function renderHeader() {
   const s = state.schema;
-  $('db-name').textContent = s.database;
-  $('db-meta').textContent = `PostgreSQL ${s.serverVersion.split(' ')[0]} · ${s.schemas.join(', ')} · read ${time(s.capturedAt)}`;
+  const src = state.status?.source;
+  $('db-name').textContent = src?.savedId ? src.label : s.database;
+  const where = src?.conn?.host ? `${s.database} on ${src.conn.host}` : s.database;
+  $('db-meta').textContent = `${where} · PostgreSQL ${s.serverVersion.split(' ')[0]} · ${s.schemas.join(', ')} · read ${dateTime(s.capturedAt)}`;
+}
+
+function clearSidebar() {
+  $('db-name').textContent = 'Not connected';
+  $('db-meta').textContent = '';
+  $('table-list').replaceChildren();
+  $('table-count').textContent = '';
+  $('findings').replaceChildren();
+  $('finding-count').textContent = '';
+  $('empty').hidden = true;
 }
 
 function renderStatus(status) {
@@ -97,6 +170,7 @@ function renderStatus(status) {
   const text = $('status-text');
   dot.className = 'dot ' + status.state;
   text.title = status.error || '';
+  const src = status.source;
   switch (status.state) {
     case 'live':
       text.textContent = `Live · last change ${time(status.changedAt)}`;
@@ -108,9 +182,16 @@ function renderStatus(status) {
       text.textContent = 'SchemaLens server unreachable, retrying…';
       break;
     case 'snapshot':
-      text.textContent = 'Snapshot (not live)';
+      text.textContent = src?.savedId ? `Saved graph · ${dateTime(src.savedAt)}` : `Snapshot · ${src?.label || ''}`;
+      break;
+    case 'none':
+      text.textContent = 'Not connected';
       break;
   }
+  if (status.state === 'offline') return; // keep the buttons as they were
+  $('refresh').hidden = status.mode !== 'live';
+  $('reconnect').hidden = !(status.mode === 'snapshot' && src?.conn?.database);
+  $('save').disabled = status.mode === 'none';
 }
 
 function renderTableList() {
@@ -329,7 +410,9 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     $('search').focus();
   } else if (e.key === 'Escape') {
-    if (typing && state.query) {
+    if (!$('connect').hidden) {
+      if (!$('connect-cancel').hidden) hideConnect();
+    } else if (typing && state.query) {
       e.target.value = state.query = '';
       applySearch();
     } else {
@@ -393,6 +476,10 @@ function bytes(n) {
   return `${n.toFixed(n < 10 ? 1 : 0)} ${units[i]}`;
 }
 
+function dateTime(iso) {
+  return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
+}
+
 function time(iso) {
   return iso ? new Date(iso).toLocaleTimeString() : '';
 }
@@ -409,17 +496,164 @@ function save(key, value) {
   try { localStorage.setItem('schemalens.' + key, value); } catch { /* private mode */ }
 }
 
+// --- connecting and saved graphs ----------------------------------------------
+
+const form = $('connect-form');
+let connectTab = 'url';
+
+function showConnect({ canCancel }) {
+  $('connect').hidden = false;
+  $('connect-cancel').hidden = !canCancel;
+  $('connect-error').hidden = true;
+  loadSavedGraphs();
+  (connectTab === 'url' ? form.elements.url : form.elements.database).focus();
+}
+
+function hideConnect() {
+  $('connect').hidden = true;
+}
+
+function setConnectTab(tab) {
+  connectTab = tab;
+  $('tab-url').classList.toggle('on', tab === 'url');
+  $('tab-fields').classList.toggle('on', tab === 'fields');
+  $('tab-url').setAttribute('aria-selected', tab === 'url');
+  $('tab-fields').setAttribute('aria-selected', tab === 'fields');
+  $('fields-url').hidden = tab !== 'url';
+  $('fields-details').hidden = tab !== 'fields';
+}
+
+$('tab-url').onclick = () => setConnectTab('url');
+$('tab-fields').onclick = () => setConnectTab('fields');
+$('connect-cancel').onclick = hideConnect;
+$('switch').onclick = () => showConnect({ canCancel: state.status?.mode !== 'none' });
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = form.elements;
+  const body = connectTab === 'url'
+    ? { url: f.url.value.trim(), schemas: f.schemas.value }
+    : {
+        host: f.host.value.trim(), port: Number(f.port.value) || 5432, database: f.database.value.trim(),
+        user: f.user.value.trim(), password: f.password.value, sslMode: f.sslMode.value, schemas: f.schemas.value,
+      };
+
+  const button = $('connect-submit');
+  button.disabled = true;
+  button.textContent = 'Connecting…';
+  $('connect-error').hidden = true;
+  try {
+    const status = await postJSON('/api/connect', body);
+    // Don't leave secrets lying around in the page once they've been used.
+    f.url.value = '';
+    f.password.value = '';
+    await handleStatus(status);
+    toast(`Connected to ${status.source.label}`);
+  } catch (err) {
+    $('connect-error').textContent = err.message;
+    $('connect-error').hidden = false;
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Connect and draw the graph';
+  }
+});
+
+async function loadSavedGraphs() {
+  let graphs = [];
+  try {
+    const res = await fetch('/api/graphs');
+    if (res.ok) graphs = await res.json();
+  } catch { /* the list just stays empty */ }
+
+  $('saved-empty').hidden = graphs.length > 0;
+  $('saved-list').replaceChildren(...graphs.map((g) => {
+    const from = g.source?.database
+      ? `${g.source.database}${g.source.host ? ' on ' + g.source.host : ''}`
+      : 'snapshot';
+    return el('li', {},
+      el('div', { className: 'saved-text' },
+        el('div', { className: 'saved-name' }, g.name),
+        el('div', { className: 'saved-meta' },
+          `${from} · ${plural(g.tables, 'table')} · ${plural(g.findings, 'finding')} · saved ${dateTime(g.savedAt)}`)),
+      el('div', { className: 'saved-actions' },
+        el('button', { type: 'button', className: 'primary', onclick: () => openSaved(g) }, 'Open'),
+        g.source?.database ? el('button', { type: 'button', onclick: () => prefill(g.source), title: 'Fill in the form to connect to this database live' }, 'Reconnect') : '',
+        el('button', { type: 'button', className: 'danger', onclick: () => deleteSaved(g) }, 'Delete')));
+  }));
+}
+
+async function openSaved(g) {
+  try {
+    await handleStatus(await postJSON(`/api/graphs/${encodeURIComponent(g.id)}/open`, {}));
+  } catch (err) {
+    toast(`Couldn't open "${g.name}": ${err.message}`);
+  }
+}
+
+async function deleteSaved(g) {
+  if (!confirm(`Delete the saved graph "${g.name}"? This can't be undone.`)) return;
+  const res = await fetch(`/api/graphs/${encodeURIComponent(g.id)}`, { method: 'DELETE' });
+  if (!res.ok) toast(`Couldn't delete "${g.name}"`);
+  loadSavedGraphs();
+}
+
+// prefill fills the form from where a graph came from. The password was
+// never saved, so that's the one thing left to type.
+function prefill(src) {
+  setConnectTab('fields');
+  const f = form.elements;
+  f.host.value = src.host || 'localhost';
+  f.port.value = src.port || 5432;
+  f.database.value = src.database || '';
+  f.user.value = src.user || '';
+  f.sslMode.value = src.sslMode || '';
+  f.schemas.value = (src.schemas || []).join(', ');
+  f.password.value = '';
+  showConnect({ canCancel: state.status?.mode !== 'none' });
+  f.password.focus();
+}
+
+$('reconnect').onclick = () => {
+  const conn = state.status?.source?.conn;
+  if (conn) prefill(conn);
+};
+
+$('save').onclick = async () => {
+  if (!state.schema) return;
+  const suggested = `${state.schema.database} ${new Date().toLocaleString()}`;
+  const name = prompt('Name this graph:', state.status?.source?.savedId ? state.status.source.label : suggested);
+  if (name === null) return;
+  try {
+    const saved = await postJSON('/api/graphs', {
+      name, positions: graph.positions(), showColumns: graph.showColumns,
+    });
+    toast(`Saved "${saved.name}"`);
+  } catch (err) {
+    toast(`Couldn't save: ${err.message}`);
+  }
+};
+
+// postJSON sends JSON and returns the parsed answer, or throws with the
+// server's error message.
+async function postJSON(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
 // --- start ---------------------------------------------------------------------
 
-fetchSchema().catch((err) => {
-  $('empty').hidden = false;
-  $('empty').textContent = `Couldn't load the schema: ${err.message}`;
-});
+fetch('/api/status')
+  .then((res) => res.json())
+  .then(handleStatus)
+  .catch((err) => {
+    $('empty').hidden = false;
+    $('empty').textContent = `Couldn't reach SchemaLens: ${err.message}`;
+  });
 
-connectLive({
-  onStatus: renderStatus,
-  onNewVersion: (version) => {
-    state.wantVersion = version;
-    catchUp();
-  },
-});
+connectLive({ onStatus: handleStatus, onOffline: () => renderStatus({ state: 'offline' }) });
