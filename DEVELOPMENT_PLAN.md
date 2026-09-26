@@ -513,6 +513,106 @@ under five minutes.
 
 ---
 
+## Phase 1.1 — Connect from the browser, and keep the graphs
+
+Phase 1 needed the connection string on the command line. That's fine for a
+developer in a terminal, but it means restarting the tool to look at another
+database, and every graph disappears when the tool stops. These steps fix
+both.
+
+---
+
+## Step 18 — Connect to a database from the page  `[x]`
+
+**Why.** You should be able to start `schemalens serve` with nothing, open the
+page, paste a connection URL (or type host, user, password...) and see the
+graph. Switching to another database should not need a restart.
+
+**What we need.**
+- `serve` without `--dsn` opens on a **Connect** screen instead of failing.
+- The form takes either a full URL (`postgres://user:pw@host:5432/db`) or the
+  separate fields: host, port, database, user, password, SSL mode, and
+  optionally which schemas to read.
+- `POST /api/connect` connects (read-only, as always), reads the schema, and
+  only *then* swaps it in. A bad password leaves the current graph on screen
+  and shows the error.
+- The server can now switch sources while it runs: stop the old watcher,
+  close the old pool, start watching the new one. The `Hub` gets a
+  `Replace` that always counts as a new version, so every open tab switches
+  over too.
+- **The password lives in memory only.** It's never written to disk, never
+  logged, and never sent back to the browser.
+- The connect endpoint makes the tool open outbound connections, so another
+  website must not be able to trigger it:
+  - `POST`s must be JSON and same-origin (stops CSRF: a cross-site JSON
+    POST needs a CORS preflight we never allow).
+  - When bound to localhost, the `Host` header must be localhost (stops DNS
+    rebinding).
+
+**Packages.** Nothing new: `net/url` builds the URL from the fields
+(escaping the password properly), and `pgconn.ParseConfig` (already part
+of pgx) reads host, port, database and user back out of a pasted URL for
+display.
+
+**How it helps.** The tool becomes something you open once and point at
+whatever database you're working on.
+
+**Done when.** Starting with no flags, connecting through the form draws the
+graph. A wrong password shows the error without losing the current graph.
+Connecting to a second database replaces the first in every open tab.
+
+---
+
+## Step 19 — Save graphs  `[x]`
+
+**Why.** A graph is worth keeping: to compare after a migration, to look at
+without the database, or just because you spent five minutes arranging the
+tables. A "saved graph" is the schema at that moment **plus the positions**
+of the tables on screen, so it reopens exactly as you left it.
+
+**What we need.**
+- A small store: one JSON file per saved graph in a data directory
+  (`~/.config/schemalens/graphs` by default, `--data-dir` to change it).
+  - Files are written to a temp file then renamed, so a crash never leaves
+    half a file.
+  - Files are `0600`, because they describe your schema.
+  - IDs are checked against a strict pattern, so a crafted ID can't reach
+    outside the directory.
+- What's saved: a name, when, the schema (tables, relations, findings), the
+  table positions, the "names only / columns" mode, and where it came from
+  (host, port, database, user, schemas). **Never the password.**
+- `GET /api/graphs` lists them, `POST /api/graphs` saves the current one,
+  `DELETE /api/graphs/{id}` removes one.
+
+**Packages.** Standard library: `os`, `encoding/json`, `path/filepath`.
+
+**How it helps.** Graphs outlive the process. The same files are also
+exactly what Phase 2 needs to compare a schema before and after a change.
+
+**Done when.** Unit tests cover save, list, open, delete, and rejecting bad
+IDs. A saved graph survives a restart of `serve`.
+
+---
+
+## Step 20 — Open saved graphs in the UI  `[x]`
+
+**Why.** Saving is only useful if getting back is one click.
+
+**What we need.**
+- A **Save** button in the toolbar that asks for a name.
+- The Connect screen lists saved graphs: open, delete, or **Reconnect**
+  (fills in the form from where it came from, minus the password).
+- Opening one (`POST /api/graphs/{id}/open`) shows it as a snapshot with
+  its saved positions; `/api/layout` hands the positions to the page.
+- Whenever the source changes (another database, a saved graph), the page
+  starts a fresh graph instead of patching the old one.
+
+**Done when.** In a browser test: connect with the form, move a table,
+save, connect to another database, open the saved graph, and the moved
+table is where it was left.
+
+---
+
 ## After Phase 1 (not built now)
 
 What we build here is shaped so these are easy later:
