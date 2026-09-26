@@ -46,7 +46,7 @@ The road looks like this:
 
 ---
 
-## Step 0 — Project setup and a database to look at  `[ ]`
+## Step 0 — Project setup and a database to look at  `[x]`
 
 **Why.** We can't build a schema reader without a schema to read. Before any
 Go code, we need a real Postgres with a realistic schema, including the
