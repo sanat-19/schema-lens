@@ -82,7 +82,7 @@ findings we expect to see. That is our answer key.
 
 ---
 
-## Step 1 — Connect safely  `[ ]`
+## Step 1 — Connect safely  `[x]`
 
 **Why.** Before reading anything, we make sure SchemaLens *cannot* hurt the
 database. People will point this tool at real databases. It must be read-only
@@ -112,7 +112,7 @@ version, and an attempted write inside that session fails.
 
 ---
 
-## Step 2 — Find out which tables exist  `[ ]`
+## Step 2 — Find out which tables exist  `[x]`
 
 **Why.** Tables are the nodes of everything we'll draw. Before columns or
 relationships make sense, we need the list of tables.
@@ -144,7 +144,7 @@ and `events` appears once.
 
 ---
 
-## Step 3 — Read the columns  `[ ]`
+## Step 3 — Read the columns  `[x]`
 
 **Why.** Relationships and findings are about columns: which column points
 where, which one is nullable, what type it is. We need them before anything
@@ -155,17 +155,18 @@ else.
   columns and columns that were dropped but still leave a row behind.
 - Type via `format_type()` so we get `varchar(255)`, not a type oid.
 - Nullable, default (`pg_get_expr` on `pg_attrdef`), comment.
-- A lookup map `(table oid, attnum) → column name`. Constraints and indexes
-  refer to columns by *number*, so steps 4 and 5 need this map.
+- Constraints and indexes refer to columns by *number* (`conkey = {2}`).
+  We turn those numbers into names inside the SQL, by joining to
+  `pg_attribute` (see `DECISIONS.md` for why not a Go map).
 
-**How it helps.** The number-to-name map is what turns `conkey = {2}` into
-`user_id`. Without it, the next two steps can't be written.
+**How it helps.** Knowing every column's name, type and nullability is what
+the next two steps build on.
 
 **Done when.** Every table in the JSON has its columns with the right types.
 
 ---
 
-## Step 4 — Read keys and foreign keys  `[ ]`
+## Step 4 — Read keys and foreign keys  `[x]`
 
 **Why.** Foreign keys are the real relationships in the database. Primary and
 unique keys tell us whether a relationship is one-to-one or many-to-one.
@@ -188,7 +189,7 @@ single FK, and `audit_log` has no primary key.
 
 ---
 
-## Step 5 — Read the indexes  `[ ]`
+## Step 5 — Read the indexes  `[x]`
 
 **Why.** Most of the performance problems we want to find are index problems:
 missing, redundant, duplicate, unused. Phase 2 (query cost) will need them too.
@@ -212,7 +213,7 @@ the JSON, with the right key columns.
 
 ---
 
-## Step 6 — Checkpoint: dump it all as JSON  `[ ]`
+## Step 6 — Checkpoint: dump it all as JSON  `[x]`
 
 **Why.** Before building on top of the reader, we look at what it produces.
 It's much easier to spot a wrong column name in a JSON file than in a graph.
