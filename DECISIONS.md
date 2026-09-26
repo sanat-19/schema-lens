@@ -143,3 +143,36 @@ command because "save this to look at later" is a different intent from
   only change the status.
 - **Ctrl+C ends open event streams.** Every request's context comes from the
   signal context, so shutdown doesn't hang on connected browsers.
+
+### UI: vendored files
+
+`cytoscape-dagre` 4.x bundles the dagre layout engine, so `web/vendor/` holds
+two scripts (`cytoscape.min.js`, `cytoscape-dagre.js`) instead of the three
+the brief listed. Versions and licences are in `web/vendor/VERSIONS`.
+
+### UI: each table is an SVG card
+
+Cytoscape can't put HTML inside a node, and one text label can't mix a bold
+header with dimmed nullable columns. So each table is drawn as a small SVG
+(header, then one row per column with 🔑 / 🔗 / U / ? markers) and used as the
+node's background. Cards with more than 30 columns show "… N more columns";
+the details panel has the full list. The SVGs are redrawn when the OS theme
+changes, since their colours are baked in.
+
+Schemas with more than 60 tables open in "names only" mode. Measured with a
+generated 250-table, 362-relation schema in headless Chromium: the layout
+takes about 0.4s in names-only mode and 0.5s with columns.
+
+### UI: live patching keeps the user's place
+
+When a new schema arrives, the graph is patched instead of re-laid out:
+existing tables keep their positions, new ones are placed where the layout
+would have put them (a child to the left of the table it references, a parent
+to the right, in the first free spot), dropped ones fade out, and changed
+ones flash. Selection, search, zoom and the details panel stay as they were.
+`/api/schema` sends an `X-Schema-Version` header so the page can tell whether
+the version it shows is the latest one announced on `/api/events`.
+
+Checked in headless Chromium by running `CREATE TABLE`, `ADD COLUMN`,
+`CREATE INDEX` and `DROP TABLE` in psql with the page open: each appeared in
+1–2 seconds, and no existing table moved.

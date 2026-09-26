@@ -396,7 +396,7 @@ we alter a table.
 
 ---
 
-## Step 13 — Draw the graph  `[ ]`
+## Step 13 — Draw the graph  `[x]`
 
 **Why.** This is what people will actually look at.
 
@@ -415,9 +415,9 @@ we alter a table.
 **Packages.**
 - **Cytoscape.js**: a mature graph library that handles pan, zoom,
   selection, styling and PNG export, and stays fast with hundreds of nodes.
-- **dagre** + **cytoscape-dagre**: a layered left-to-right layout, which
-  fits "child points to parent" naturally.
-- All three are **copied into `web/vendor/`**, so the tool works offline and
+- **cytoscape-dagre** (which bundles **dagre**): a layered left-to-right
+  layout, which fits "child points to parent" naturally.
+- Both are **copied into `web/vendor/`**, so the tool works offline and
   doesn't depend on a CDN.
 - No React and no build step. Plain HTML, CSS and JS are enough for one page,
   and anyone can read them.
@@ -430,7 +430,7 @@ schema lays out in under 2 seconds.
 
 ---
 
-## Step 14 — Sidebar and details panel  `[ ]`
+## Step 14 — Sidebar and details panel  `[x]`
 
 **Why.** The graph shows the shape. The panels answer "tell me more about
 this table" and "what's wrong?".
@@ -451,7 +451,7 @@ runnable SQL.
 
 ---
 
-## Step 15 — Make the UI live  `[ ]`
+## Step 15 — Make the UI live  `[x]`
 
 **Why.** Step 11 made the server notice changes. The browser must show them
 without redrawing everything and losing the user's place.
