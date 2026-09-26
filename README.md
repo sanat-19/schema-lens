@@ -184,6 +184,8 @@ catalog (tables, columns, types, constraints, indexes, comments), which takes
 about 2 ms, and only when the hash changes does it read the full schema and
 tell the browser. The UI then patches the graph rather than redrawing it.
 
+New to the code? Start with the [code tour](docs/CODE_TOUR.md): what to read
+first, and how one schema change travels from Postgres to the browser.
 See [`DEVELOPMENT_PLAN.md`](DEVELOPMENT_PLAN.md) for how the project was built
 step by step, and [`DECISIONS.md`](DECISIONS.md) for the calls made along the way.
 
