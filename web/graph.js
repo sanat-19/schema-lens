@@ -50,10 +50,11 @@ export function createGraph(container, { onSelect, onClear }) {
   });
 
   // update brings the graph in line with a new schema. The first time it
-  // lays everything out; after that it patches: new tables fade in next to
-  // their neighbours, dropped ones fade out, changed ones flash, and nothing
-  // that already exists moves.
-  function update(schema) {
+  // lays everything out (or puts tables back where a saved graph had them);
+  // after that it patches: new tables fade in next to their neighbours,
+  // dropped ones fade out, changed ones flash, and nothing that already
+  // exists moves.
+  function update(schema, { positions } = {}) {
     const severity = worstSeverityByTable(schema.findings || []);
     const tables = new Map(schema.tables.map((t) => [tableId(t), t]));
     const relations = new Map((schema.relations || []).map((r) => [r.id, r]));
@@ -100,7 +101,11 @@ export function createGraph(container, { onSelect, onClear }) {
 
     if (!loaded) {
       loaded = true;
-      runLayout();
+      if (positions && Object.keys(positions).length) {
+        restore(positions);
+      } else {
+        runLayout();
+      }
       return { added: [], changed: [], removed: [] };
     }
 
@@ -158,6 +163,37 @@ export function createGraph(container, { onSelect, onClear }) {
       const b = n.boundingBox();
       return pos.x - w < b.x2 && pos.x + w > b.x1 && pos.y - h < b.y2 && pos.y + h > b.y1;
     });
+  }
+
+  // restore puts tables where a saved graph had them. Tables the saved
+  // layout doesn't know about go next to their neighbours, as for a live
+  // update.
+  function restore(positions) {
+    const unknown = [];
+    cy.nodes().forEach((n) => {
+      const p = positions[n.id()];
+      if (p) n.position({ x: p.x, y: p.y });
+      else unknown.push(n);
+    });
+    placeNear(unknown);
+    cy.fit(undefined, 30);
+    container.dataset.layoutMs = 0;
+  }
+
+  // reset clears the graph for a different database or saved graph, so the
+  // next update starts from scratch instead of patching.
+  function reset() {
+    cy.elements().remove();
+    loaded = false;
+  }
+
+  // positions reports where every table is now, for saving.
+  function positions() {
+    const out = {};
+    cy.nodes().forEach((n) => {
+      out[n.id()] = { x: Math.round(n.position('x')), y: Math.round(n.position('y')) };
+    });
+    return out;
   }
 
   function flash(nodes) {
@@ -227,7 +263,7 @@ export function createGraph(container, { onSelect, onClear }) {
   }
 
   return {
-    update, select, clearSelection, focus, search, setShowColumns, setLayout, png,
+    update, reset, positions, select, clearSelection, focus, search, setShowColumns, setLayout, png,
     fit: () => cy.animate({ fit: { padding: 30 } }, { duration: 300 }),
     get showColumns() { return showColumns; },
   };

@@ -26,6 +26,35 @@ type Watcher struct {
 	mu        sync.Mutex // one reload at a time
 	lastPrint string
 	lastLoad  time.Time
+	stopped   bool // after Stop, nothing more is published
+}
+
+// Prime does the first read without publishing it, and returns the schema.
+// Connecting uses it so that a database we can't read never replaces the
+// graph on screen.
+func (w *Watcher) Prime(ctx context.Context) (*schema.Schema, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	fp, err := w.Fingerprint(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s, err := w.Load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	w.lastPrint, w.lastLoad = fp, time.Now()
+	return s, nil
+}
+
+// Stop makes sure this watcher never publishes again. A reload that is
+// already running finishes first, so once Stop returns the Hub is ours to
+// switch to another source.
+func (w *Watcher) Stop() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.stopped = true
 }
 
 // maxBackoff caps how long we wait between tries while the database is down.
@@ -93,6 +122,9 @@ func (w *Watcher) Reload(ctx context.Context) error {
 func (w *Watcher) reload(ctx context.Context, fp string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.stopped {
+		return nil // the UI has moved on to another source
+	}
 
 	s, err := w.Load(ctx)
 	if err != nil {

@@ -176,3 +176,62 @@ the version it shows is the latest one announced on `/api/events`.
 Checked in headless Chromium by running `CREATE TABLE`, `ADD COLUMN`,
 `CREATE INDEX` and `DROP TABLE` in psql with the page open: each appeared in
 1–2 seconds, and no existing table moved.
+
+### Connecting from the page (Phase 1.1)
+
+The brief had the database fixed on the command line. Now `serve` can start
+with nothing and connect from the page, which means the server switches
+sources while running:
+
+- **A connect only replaces the graph once the first read has worked.**
+  `Watcher.Prime` reads without publishing; a wrong password or missing
+  permission leaves the current graph on screen and shows the error.
+- **Switching is strictly ordered:** stop the old watcher and wait for it to
+  exit, mark it stopped (so a Refresh that is still running can't publish
+  the old database), close its pool, and only then swap in the new schema.
+  A test checks that changing the old database afterwards changes nothing.
+- **Every switch is a new "source"** with its own key. The page starts a
+  fresh graph for a new source instead of patching the old one, and ignores
+  a `/api/schema` answer that belongs to a different source than it expects.
+- **The password is in memory only.** It's part of the DSN the pool holds
+  (it needs it to reconnect), but it's never logged, never saved, never
+  sent back, and the page clears the field once it has been used. The URL
+  field is a password field, because URLs usually contain one.
+- **The form can build the URL.** `url.UserPassword` escapes the password,
+  so `p@ss/word?` can't break the URL. A test checks the round trip.
+
+### Protecting /api/connect from other websites
+
+Any page you visit can send requests to `localhost:8080`, and this endpoint
+makes the tool open outbound connections. So:
+
+- POSTs must be `application/json`. Browsers can only send "simple" content
+  types cross-site without a CORS preflight, and we never answer one.
+- A foreign `Origin` header is refused.
+- When listening on a loopback address, a `Host` header that isn't
+  localhost is refused. That stops DNS rebinding, where evil.example points
+  its own name at 127.0.0.1 to look same-origin.
+
+### Saved graphs
+
+The brief ruled out persistent storage for Phase 1; saving was asked for
+afterwards, so it's the one piece of storage, and deliberately small:
+
+- One JSON file per graph in the user's config directory (`--data-dir` to
+  change it). No database, no index file to get out of sync: listing reads
+  the directory and skips files it can't parse.
+- A saved graph is the **schema plus the table positions** and the
+  names/columns mode, so it reopens exactly as it was left. It also records
+  host, port, database, user, SSL mode and schemas, for Reconnect; **never
+  the password**. A test reads the saved file back and checks it isn't there.
+- Files are `0600` and the directory `0700`, since they describe the schema.
+  Writes go to a temp file that's renamed into place, so a crash can't leave
+  half a file. IDs come back in URLs, so they're checked against
+  `^[a-z0-9][a-z0-9-]*$` before touching the disk.
+- Opening a saved graph shows it as a snapshot and disconnects the live
+  database, because the page shows one source at a time.
+
+Checked in headless Chromium: start with no flags, get a wrong-password
+error, connect through the form, confirm it's live, drag a table, save,
+switch to another database, open the saved graph, and the dragged table is
+back where it was left.

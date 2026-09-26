@@ -354,3 +354,72 @@ code, pre { font-family: var(--mono); font-size: 12px; }
 .links li { padding: 3px 0; font-size: 12.5px; }
 .links .jump { border: 0; background: none; padding: 0; color: var(--accent); font-family: var(--mono); font-size: 12.5px; }
 .links .jump:hover { text-decoration: underline; }
+
+/* --- connect panel and saved graphs --------------------------------------- */
+
+.status-actions { margin-left: auto; display: inline-flex; gap: 4px; }
+.status-actions [hidden] { display: none; }
+.status-row #refresh { margin-left: 0; }
+
+.connect {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  background: var(--bg);
+  z-index: 5;
+}
+.connect[hidden] { display: none; }
+.connect-inner { max-width: 620px; margin: 0 auto; padding: 32px 16px 48px; }
+.connect h2 { font-size: 18px; margin: 0 0 6px; }
+.connect h2:not(:first-child) { margin-top: 36px; }
+.connect .tabs { margin: 14px 0 12px; }
+
+#connect-form { display: flex; flex-direction: column; gap: 12px; }
+#connect-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 500; }
+#connect-form input, #connect-form select {
+  font: inherit;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  width: 100%;
+}
+#connect-form input[name="url"] { font-family: var(--mono); font-size: 13px; }
+/* Pairs: host | port, database | ssl, user | password. */
+#connect-form .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+#connect-form .grid[hidden] { display: none; }
+@media (max-width: 560px) {
+  #connect-form .grid { grid-template-columns: 1fr; }
+}
+
+.form-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--high) 12%, transparent);
+  color: var(--high);
+  font-size: 13px;
+  word-break: break-word;
+}
+.form-error[hidden] { display: none; }
+.form-actions { display: flex; gap: 8px; }
+.form-actions [hidden] { display: none; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+button.primary:disabled { opacity: .6; cursor: progress; }
+
+.saved-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.saved-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  margin-bottom: 8px;
+}
+.saved-list .saved-text { flex: 1; min-width: 0; }
+.saved-list .saved-name { font-weight: 600; overflow-wrap: anywhere; }
+.saved-list .saved-meta { color: var(--muted); font-size: 12px; }
+.saved-list .saved-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.saved-list button.danger:hover { border-color: var(--high); color: var(--high); }

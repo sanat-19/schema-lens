@@ -20,7 +20,11 @@
         <div class="status-row">
           <span id="status-dot" class="dot"></span>
           <span id="status-text" class="small">Connecting…</span>
-          <button id="refresh" class="small-button" title="Re-read the database now">Refresh</button>
+          <span class="status-actions">
+            <button id="refresh" class="small-button" title="Re-read the database now" hidden>Refresh</button>
+            <button id="reconnect" class="small-button" title="Connect to the database this graph came from" hidden>Reconnect</button>
+            <button id="switch" class="small-button" title="Connect to another database or open a saved graph">Switch</button>
+          </span>
         </div>
       </header>
 
@@ -50,6 +54,7 @@
           </select>
         </label>
         <span class="spacer"></span>
+        <button id="save" type="button" title="Save this graph, with its layout, to open later">Save</button>
         <button id="fit" type="button" title="Fit the whole graph on screen">Fit</button>
         <button id="png" type="button" title="Download the current view as a PNG">PNG</button>
         <a id="mermaid" class="button" href="/api/export/mermaid?download=1" title="Download a Mermaid ER diagram">Mermaid</a>
@@ -66,6 +71,60 @@
       </div>
 
       <div id="empty" class="empty" hidden></div>
+
+      <section id="connect" class="connect" hidden>
+        <div class="connect-inner">
+          <h2>Connect to a PostgreSQL database</h2>
+          <p class="muted small">SchemaLens only reads: every session is read-only. The password stays in
+            memory while you're connected and is never saved.</p>
+
+          <div class="segmented tabs" role="tablist">
+            <button type="button" role="tab" id="tab-url" class="on" aria-selected="true">Connection URL</button>
+            <button type="button" role="tab" id="tab-fields" aria-selected="false">Enter details</button>
+          </div>
+
+          <form id="connect-form" autocomplete="off">
+            <div id="fields-url">
+              <label>Connection URL
+                <input name="url" type="password" placeholder="postgres://user:password@localhost:5432/mydb" spellcheck="false">
+              </label>
+              <p class="muted small">Shown as dots because it usually contains the password.</p>
+            </div>
+
+            <div id="fields-details" class="grid" hidden>
+              <label>Host <input name="host" value="localhost" spellcheck="false"></label>
+              <label>Port <input name="port" type="number" value="5432" min="1" max="65535"></label>
+              <label>Database <input name="database" spellcheck="false"></label>
+              <label>SSL
+                <select name="sslMode">
+                  <option value="">default</option>
+                  <option value="disable">disable</option>
+                  <option value="prefer">prefer</option>
+                  <option value="require">require</option>
+                  <option value="verify-full">verify-full</option>
+                </select>
+              </label>
+              <label>User <input name="user" spellcheck="false" autocomplete="username"></label>
+              <label>Password <input name="password" type="password" autocomplete="current-password"></label>
+            </div>
+
+            <label><span>Schemas <span class="muted">(optional)</span></span>
+              <input name="schemas" placeholder="public, billing  (empty means all)" spellcheck="false">
+            </label>
+
+            <p id="connect-error" class="form-error" role="alert" hidden></p>
+
+            <div class="form-actions">
+              <button id="connect-submit" type="submit" class="primary">Connect and draw the graph</button>
+              <button id="connect-cancel" type="button" hidden>Cancel</button>
+            </div>
+          </form>
+
+          <h2>Saved graphs</h2>
+          <p id="saved-empty" class="muted small">Nothing saved yet. Use <b>Save</b> in the toolbar to keep a graph, with its layout.</p>
+          <ul id="saved-list" class="saved-list"></ul>
+        </div>
+      </section>
       <div id="toast" class="toast" role="status" hidden></div>
     </main>
 
