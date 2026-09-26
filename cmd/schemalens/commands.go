@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/sanat-19/schema-lens/internal/analyze"
 	"github.com/sanat-19/schema-lens/internal/graph"
 	"github.com/sanat-19/schema-lens/internal/postgres"
 	"github.com/sanat-19/schema-lens/internal/schema"
@@ -71,6 +72,7 @@ func loadFromDatabase(db dbFlags) (*schema.Schema, error) {
 // tables relate, and what's wrong with them. Snapshots already contain this.
 func enrich(s *schema.Schema) {
 	s.Relations = graph.Relations(s)
+	s.Findings = analyze.Findings(s)
 }
 
 // writeOutput sends output to a file if one was named, else to stdout.

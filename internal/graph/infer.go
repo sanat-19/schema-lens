@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 
@@ -19,7 +20,7 @@ func inferRelations(s *schema.Schema) []schema.Relation {
 	var rels []schema.Relation
 	for _, child := range s.Tables {
 		for _, col := range child.Columns {
-			if col.IsFK {
+			if inForeignKey(child, col.Name) {
 				continue
 			}
 			thing, ok := referencedThing(col.Name)
@@ -52,6 +53,18 @@ func inferRelations(s *schema.Schema) []schema.Relation {
 		}
 	}
 	return rels
+}
+
+// inForeignKey reports whether the column is already part of a declared FK.
+// We check the FKs themselves rather than Column.IsFK, so this works on any
+// schema, not only one whose reader set the flags.
+func inForeignKey(t *schema.Table, column string) bool {
+	for _, fk := range t.ForeignKeys {
+		if slices.Contains(fk.Columns, column) {
+			return true
+		}
+	}
+	return false
 }
 
 // referencedThing pulls "product" out of "product_id" or "productId".

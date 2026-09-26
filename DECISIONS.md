@@ -78,3 +78,32 @@ matches are still one-to-one, so the brief's cases behave the same.
   read as `pa` + `id`.
 - Types are compared by family: all integer sizes match each other, and text,
   varchar and char match each other. Anything else must be the same base type.
+
+### Findings: where we went a bit further than the brief
+
+- **`unused_index` skips indexes that serve a foreign key** (real or
+  inferred). An FK index can show 0 scans for weeks if parents are rarely
+  deleted, but dropping it brings back exactly the full-table scan that
+  `missing_fk_index` warns about. Telling someone to drop it would be bad
+  advice.
+- **Each index is reported once.** If an index is a duplicate, we don't also
+  call it redundant or unused. One clear "drop this" is enough.
+- **Which duplicate to keep:** the primary key, then a unique index, then the
+  most-scanned, then by name. We never suggest dropping a primary key.
+- **`redundant_index` skips short indexes with `INCLUDE` columns.** They are
+  usually there for index-only scans that the longer index can't do.
+- **`fk_type_mismatch` ignores length modifiers.** `varchar(10)` → `varchar(3)`
+  compares without a cast, so it isn't flagged. `integer` → `bigint` is, and
+  the explanation names the real risk: the child column overflows once parent
+  ids pass 2³¹.
+- **Partitioned tables get different SQL.** `CREATE INDEX CONCURRENTLY` and
+  `DROP INDEX CONCURRENTLY` fail on partitioned tables, so those suggestions
+  say how to avoid a long lock instead.
+- **`no_primary_key` promotes a unique NOT NULL key if there is one**, before
+  suggesting a brand-new identity column.
+- **Inference checks the declared FKs, not `Column.IsFK`.** A unit test
+  caught this: a schema from another source (a snapshot, a future MySQL
+  reader) may not set the flag.
+
+Every suggestion is checked against the demo database by running it inside
+a transaction that is rolled back.

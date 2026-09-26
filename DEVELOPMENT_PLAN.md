@@ -282,7 +282,7 @@ don't guess across incompatible types or composite PKs.
 
 ---
 
-## Step 9 — Find the problems  `[ ]`
+## Step 9 — Find the problems  `[x]`
 
 **Why.** A pretty graph is nice. Telling a developer "this will be slow, and
 here's the SQL to fix it" is useful. This is where SchemaLens starts helping.
