@@ -477,7 +477,7 @@ within a few seconds, and nothing else on the graph moves.
 
 ---
 
-## Step 16 — Tests and CI  `[ ]`
+## Step 16 — Tests and CI  `[x]`
 
 **Why.** Tests were written along the way (steps 7–10). Here we add the ones
 that need a real database, and make sure every push is checked.
