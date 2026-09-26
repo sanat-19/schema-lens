@@ -1,0 +1,6 @@
+Third-party files, copied from npm so SchemaLens works offline.
+To upgrade: npm pack <name>@<version>, copy the file below, update this list.
+
+cytoscape        3.34.3   dist/cytoscape.min.js   (LICENSE.cytoscape, MIT)
+cytoscape-dagre  4.0.1    dist/cytoscape-dagre.js (LICENSE.cytoscape-dagre, MIT)
+                          bundles the dagre layout engine (LICENSE.dagre, MIT)
