@@ -123,3 +123,23 @@ They produce the same JSON, relations and findings included, so `serve
 --from` doesn't need to recompute anything. `snapshot` exists as its own
 command because "save this to look at later" is a different intent from
 "print this", and it says what it saved.
+
+### How the live loop behaves
+
+- **Two clocks.** The structure fingerprint is checked every 2s
+  (`--watch-interval`, measured at about 1.6 ms per check on the demo DB). A
+  full re-read happens only when it changes, or every 30s
+  (`--stats-interval`) to pick up new row counts, sizes and index scans.
+- **Browsers are only told about real changes.** A re-read that gives the
+  same schema (apart from the capture time) doesn't bump the version, so a
+  quiet database doesn't make every open tab re-fetch every 30s.
+- **Events say "something changed", not what.** The SSE message is just the
+  new version number and time; the browser then fetches `/api/schema`. A tab
+  that missed a few events simply gets the latest version.
+- **If the database goes away**, the last good schema stays on screen, the
+  status turns to "reconnecting", and checks back off from 2s up to 30s.
+- **The first read must succeed.** If `serve` can't read the schema at
+  start-up there is nothing to show, so it exits with code 2. Later failures
+  only change the status.
+- **Ctrl+C ends open event streams.** Every request's context comes from the
+  signal context, so shutdown doesn't hang on connected browsers.

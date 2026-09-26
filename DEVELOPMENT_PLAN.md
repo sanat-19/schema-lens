@@ -336,7 +336,7 @@ somewhere else.
 
 ---
 
-## Step 11 — Watch the database for changes  `[ ]`
+## Step 11 — Watch the database for changes  `[x]`
 
 **Why.** The schema isn't a document we generate once. It changes when
 someone runs a migration. The picture must follow the database by itself,
@@ -367,7 +367,7 @@ schema within a few seconds, with no restart.
 
 ---
 
-## Step 12 — HTTP server and live events  `[ ]`
+## Step 12 — HTTP server and live events  `[x]`
 
 **Why.** The browser needs the schema and needs to hear when it changes.
 

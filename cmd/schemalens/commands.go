@@ -68,10 +68,6 @@ func runSnapshot(args []string, stderr io.Writer) error {
 	return nil
 }
 
-func runServe(args []string, stderr io.Writer) error {
-	return usagef("serve is not built yet")
-}
-
 // loadFromDatabase connects, reads the schema once, and disconnects.
 func loadFromDatabase(db dbFlags) (*schema.Schema, error) {
 	dsn, schemas, err := db.connection()
