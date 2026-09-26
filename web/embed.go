@@ -7,5 +7,5 @@ package web
 
 import "embed"
 
-//go:embed index.html style.css app.js graph.js live.js vendor
+//go:embed index.html style.css app.js graph.js live.js colors.js vendor
 var FS embed.FS

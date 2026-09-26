@@ -118,6 +118,9 @@ running.
   table holding the FK to the table it references, labelled `N:1` / `1:1`
   (`0..1` when the FK is nullable). Dashed edges are relations guessed from
   column names. A red or orange border means a high or medium finding.
+  Tables in schemas other than `public` are tinted with their schema's
+  colour (say `billing` red and `cart` blue), shown in the legend and the
+  sidebar, so tables that belong together stand out.
   Click a table to light up its neighbours, and double-click or press Esc to
   reset. For big schemas, "Names only" keeps 250 tables laid out in under
   half a second.

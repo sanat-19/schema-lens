@@ -7,6 +7,7 @@
 
 import { createGraph, tableId, rowsText } from './graph.js';
 import { connectLive } from './live.js';
+import { schemaColors } from './colors.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -120,6 +121,7 @@ function applySchema(schema, version) {
 
   renderHeader();
   renderTableList();
+  renderSchemaLegend();
   renderFindings();
   applySearch();
 
@@ -162,6 +164,8 @@ function clearSidebar() {
   $('table-count').textContent = '';
   $('findings').replaceChildren();
   $('finding-count').textContent = '';
+  $('schema-legend').replaceChildren();
+  $('schema-legend').hidden = true;
   $('empty').hidden = true;
 }
 
@@ -196,6 +200,7 @@ function renderStatus(status) {
 
 function renderTableList() {
   const severity = worstSeverity();
+  const colors = schemaColorsNow();
   const list = $('table-list');
   list.replaceChildren(...state.schema.tables.map((t) => {
     const id = tableId(t);
@@ -206,9 +211,30 @@ function renderTableList() {
         t.name),
       el('span', { className: 'stats' }, `${rowsText(t)} · ${bytes(t.totalBytes)}`));
     li.classList.toggle('selected', id === state.selected);
+    if (colors.has(t.schema)) {
+      li.classList.add('in-schema'); // a stripe in the schema's colour
+      li.style.setProperty('--schema-color', colors.get(t.schema));
+    }
     return li;
   }));
   $('table-count').textContent = state.schema.tables.length;
+}
+
+// schemaColorsNow gives the colours for the schemas on screen; the graph
+// works them out the same way, so the two always agree.
+function schemaColorsNow() {
+  return schemaColors(state.schema.tables.map((t) => t.schema));
+}
+
+// renderSchemaLegend adds one chip per coloured schema to the legend.
+function renderSchemaLegend() {
+  const colors = schemaColorsNow();
+  $('schema-legend').replaceChildren(...[...colors].map(([name, color]) => {
+    const swatch = el('i', { className: 'swatch' });
+    swatch.style.setProperty('--schema-color', color);
+    return el('span', { title: `Tables in the ${name} schema` }, swatch, name);
+  }));
+  $('schema-legend').hidden = colors.size === 0;
 }
 
 function renderFindings() {
@@ -296,6 +322,7 @@ function renderDetails(id) {
     el('h2', {}, id),
     t.comment ? el('p', { className: 'comment muted' }, t.comment) : '',
     el('div', { className: 'badges' },
+      schemaBadge(t.schema),
       el('span', { className: 'badge' }, rowsText(t)),
       el('span', { className: 'badge' }, bytes(t.totalBytes)),
       t.partitioned ? el('span', { className: 'badge' }, 'partitioned') : '',
@@ -326,6 +353,14 @@ function renderDetails(id) {
 
   $('details-body').replaceChildren(...body);
   $('details').hidden = false;
+}
+
+// schemaBadge shows which schema a table is in, in that schema's colour.
+function schemaBadge(name) {
+  const badge = el('span', { className: 'badge schema-badge' }, `schema ${name}`);
+  const color = schemaColorsNow().get(name);
+  if (color) badge.style.setProperty('--schema-color', color);
+  return badge;
 }
 
 function columnsTable(t) {
