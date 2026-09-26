@@ -1,1 +1,175 @@
-# schema-lens
+# SchemaLens
+
+**See your PostgreSQL schema as a live relationship graph, with the
+structural problems that will slow it down.**
+
+When you write SQL you usually can't tell what it will cost: whether it
+scans a whole table or quietly pushes CPU up. Tools like pganalyze, Datadog
+and PMM tell you *after* the slow query reaches production. SchemaLens aims to
+tell you **while you are writing it**. The first step, and what this
+repository does today, is to understand the database: which tables exist, how
+big they are, how they relate, and what's structurally wrong. It's shown as
+an interactive graph that follows the database as you migrate it.
+
+![SchemaLens showing the demo shop database](docs/screenshot.png)
+
+- **Live.** Run a migration and the graph updates within seconds. New tables
+  appear next to the tables they reference, and nothing else moves.
+- **Read-only by design.** Every session runs with
+  `default_transaction_read_only = on` and a statement timeout. Suggested fixes
+  are text for you to copy; SchemaLens never runs them.
+- **One binary.** The UI is built in, works offline, and needs no Node or CDN.
+
+## Quickstart
+
+You need Go 1.25+ and Docker.
+
+```sh
+git clone https://github.com/sanat-19/schema-lens
+cd schema-lens
+make demo
+```
+
+`make demo` starts Postgres 16 with a demo shop database (17 tables, one of
+each problem SchemaLens looks for) and opens the UI. To watch the live
+updates, keep the page open and change the schema in another terminal:
+
+```sh
+docker compose exec postgres psql -U schemalens -d shop \
+  -c "CREATE TABLE wishlists (id bigserial PRIMARY KEY, user_id bigint REFERENCES users(id))"
+```
+
+## Usage
+
+```
+schemalens serve    --dsn <url> [--schemas public,billing] [--addr 127.0.0.1:8080] [--open]
+schemalens serve    --from snapshot.json
+schemalens snapshot --dsn <url> [--schemas ...] -o snapshot.json
+schemalens export   --dsn <url> [--schemas ...] --format json|mermaid [-o file]
+```
+
+| Flag | Meaning |
+|---|---|
+| `--dsn` | Connection string. Defaults to `$DATABASE_URL`. The password is never printed. |
+| `--schemas` | Schemas to read. Defaults to every non-system schema. |
+| `--addr` | Where to serve the UI. Defaults to `127.0.0.1:8080`, local only, because it shows your schema. |
+| `--open` | Open the UI in your browser. |
+| `--from` | Show a saved snapshot instead of a live database. |
+| `--watch-interval` | How often to check for schema changes (default `2s`). |
+| `--stats-interval` | How often to refresh row counts, sizes and index usage (default `30s`). |
+
+Exit codes: `0` success, `1` bad command line, `2` couldn't connect or read
+the database.
+
+**Snapshots** let you look at a schema later without access to the
+database, on a plane or when a colleague sends you theirs:
+
+```sh
+schemalens snapshot --dsn "$PROD_READONLY_URL" -o prod.json
+schemalens serve --from prod.json
+```
+
+**Mermaid** output renders straight from a Markdown code block on GitHub and
+GitLab. It's also available live at `/api/export/mermaid` while `serve` is
+running.
+
+## The UI
+
+- **Left:** the database and whether it's live, a table filter (press `/`),
+  every table with its size, and the findings grouped by severity. Opening a
+  finding jumps to its table and shows SQL to copy.
+- **Centre:** each table as an ER card. 🔑 is a primary key, 🔗 a foreign key,
+  `U` unique, and `?` or dimmed text a nullable column. Edges run from the
+  table holding the FK to the table it references, labelled `N:1` / `1:1`
+  (`0..1` when the FK is nullable). Dashed edges are relations guessed from
+  column names. A red or orange border means a high or medium finding.
+  Click a table to light up its neighbours, and double-click or press Esc to
+  reset. For big schemas, "Names only" keeps 250 tables laid out in under
+  half a second.
+- **Right:** the selected table's columns, indexes (size, scan count, and
+  tags for unused, redundant or duplicate), what it references, what
+  references it, and its findings.
+
+It follows your OS's light or dark theme.
+
+![Details panel in dark mode](docs/screenshot-details-dark.png)
+
+## What SchemaLens finds
+
+| Finding | Severity | Why it matters |
+|---|---|---|
+| `missing_fk_index` | high if the child table has over 10k rows, else medium | Postgres doesn't index the referencing side of an FK. Joins to the parent, and every delete or key update on the parent, scan the whole child table. |
+| `fk_type_mismatch` | medium | The FK column's type differs from the key it references, e.g. `integer` → `bigint`. Comparisons need a cast, and for integers the child column overflows once parent ids pass 2³¹. |
+| `no_primary_key` | medium | Nothing stops duplicate rows, ORMs can't safely target one row, and logical replication can't replicate UPDATEs and DELETEs. |
+| `duplicate_index` | medium | Two indexes with the same method, columns and predicate. Every write updates both for no benefit. |
+| `redundant_index` | low | `(a)` when `(a, b)` exists. The longer index serves the same lookups, so the short one only costs writes and disk. |
+| `unused_index` | low | Over 1 MB and never scanned since stats were reset. Indexes that back a constraint or an FK are never flagged. |
+| `inferred_relation` | low | A column like `product_id` clearly points at `products` but has no FK, so orphaned rows can creep in. |
+
+Every finding comes with SQL you can copy, written to avoid long locks where
+Postgres allows it (`CREATE INDEX CONCURRENTLY`, `ADD CONSTRAINT ... NOT VALID`
+then `VALIDATE`), and with a note when that isn't possible, such as on
+partitioned tables.
+
+## How it works
+
+```mermaid
+flowchart LR
+    PG[(PostgreSQL)] -- pg_catalog, read-only --> I[postgres<br/>Introspect]
+    PG -- fingerprint every 2s --> W[server<br/>Watcher]
+    W -- changed? --> I
+    I --> M[schema<br/>model]
+    M --> G[graph<br/>relations]
+    G --> A[analyze<br/>findings]
+    A --> H[server<br/>Hub]
+    H -- /api/schema --> UI[web UI<br/>Cytoscape + dagre]
+    H -- /api/events SSE --> UI
+    M -. snapshot JSON .-> H
+    M --> R[render<br/>Mermaid]
+```
+
+| Package | Job |
+|---|---|
+| `internal/schema` | The database-agnostic model: tables, columns, keys, indexes, relations, findings. Everything else reads it. |
+| `internal/postgres` | The only package that talks to Postgres. It reads `pg_catalog` in one read-only transaction, one batched query per kind of object, and computes the change fingerprint. |
+| `internal/graph` | Relations from FKs (cardinality, optionality) and relations guessed from column names. |
+| `internal/analyze` | The seven checks above. These are pure functions over the model, unit-tested without a database. |
+| `internal/render` | Mermaid `erDiagram` export. |
+| `internal/server` | The HTTP API, the Server-Sent Events stream, and the watcher that keeps the schema current. |
+| `web/` | The UI: plain HTML, CSS and JS, embedded in the binary. |
+
+**Staying live without writing to your database:** Postgres can push schema
+changes through event triggers, but creating one is a write that needs
+superuser. So SchemaLens asks instead. A single query hashes the structural
+catalog (tables, columns, types, constraints, indexes, comments), which takes
+about 2 ms, and only when the hash changes does it read the full schema and
+tell the browser. The UI then patches the graph rather than redrawing it.
+
+See [`DEVELOPMENT_PLAN.md`](DEVELOPMENT_PLAN.md) for how the project was built
+step by step, and [`DECISIONS.md`](DECISIONS.md) for the calls made along the way.
+
+## Development
+
+```sh
+make db-up             # Postgres 16 + demo schema on localhost:5433
+make test              # unit tests, no database needed
+make test-integration  # plus the tests that need the demo database
+make lint              # go vet + staticcheck
+make db-reset          # reload the demo schema from scratch
+```
+
+CI runs all of this against a Postgres 16 service container on every push.
+
+## Roadmap
+
+- **Phase 2: query analysis.** Read `pg_stat_statements`, rank queries by
+  total and mean time, run `EXPLAIN` on them, catch sequential scans on big
+  tables and bad row estimates, and colour the hot tables and edges on the
+  graph. It builds on the row estimates, index usage stats and live loop that
+  exist today.
+- **Phase 3: shift-left.** Find the SQL in Go code (raw strings, sqlc, GORM),
+  `EXPLAIN` it against a shadow database with the production schema *and
+  production planner statistics* (not production data), and comment on the
+  pull request with the estimated cost and a suggested fix.
+- **Later:** MySQL, as a second implementation of the `Introspector`
+  interface.

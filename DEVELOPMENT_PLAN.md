@@ -500,7 +500,7 @@ right away if we broke Phase 1.
 
 ---
 
-## Step 17 — README  `[ ]`
+## Step 17 — README  `[x]`
 
 **Why.** It's a portfolio project. The README is the first thing people see.
 
