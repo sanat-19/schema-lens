@@ -235,7 +235,7 @@ we planted in step 0.
 
 ---
 
-## Step 7 — Find the relationships  `[ ]`
+## Step 7 — Find the relationships  `[x]`
 
 **Why.** A list of foreign keys isn't a graph yet. We need edges with meaning:
 which table depends on which, one-to-one or many-to-one, required or optional.
@@ -259,7 +259,7 @@ composite FKs, and `user_profiles → users` comes out as one-to-one.
 
 ---
 
-## Step 8 — Guess the missing relationships  `[ ]`
+## Step 8 — Guess the missing relationships  `[x]`
 
 **Why.** Many real databases have no FK constraints at all. The app "knows"
 that `reviews.product_id` points at `products`, but the database doesn't. If

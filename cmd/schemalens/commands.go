@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/sanat-19/schema-lens/internal/graph"
 	"github.com/sanat-19/schema-lens/internal/postgres"
 	"github.com/sanat-19/schema-lens/internal/schema"
 )
@@ -58,7 +59,18 @@ func loadFromDatabase(db dbFlags) (*schema.Schema, error) {
 	}
 	defer pool.Close()
 
-	return postgres.NewIntrospector(pool, schemas).Introspect(ctx)
+	s, err := postgres.NewIntrospector(pool, schemas).Introspect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	enrich(s)
+	return s, nil
+}
+
+// enrich works out everything that follows from the raw schema: how the
+// tables relate, and what's wrong with them. Snapshots already contain this.
+func enrich(s *schema.Schema) {
+	s.Relations = graph.Relations(s)
 }
 
 // writeOutput sends output to a file if one was named, else to stdout.

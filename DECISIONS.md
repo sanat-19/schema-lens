@@ -58,3 +58,23 @@ didn't see.
 
 `docker-compose.yml` maps Postgres to 5433 so it doesn't clash with a
 Postgres many developers already have on 5432.
+
+### One-to-one when the FK columns *contain* a unique key
+
+The brief said one-to-one when the FK columns exactly equal the child's PK
+or a unique key. We use "contain" instead: if the FK is `(a, b)` and `a` alone
+is unique, no two child rows can point at the same parent either. Exact
+matches are still one-to-one, so the brief's cases behave the same.
+
+### Guessing relations: when we refuse to guess
+
+- If the column's own schema has a matching table, we use it. If not, and
+  exactly one other loaded schema has one, we use that. If two or more do, we
+  can't tell which is meant, so we don't guess. A wrong dashed edge is worse
+  than none.
+- A table's own primary key named like a link (`users.user_id`) is not
+  treated as a link to itself.
+- camelCase needs a capital `I` (`productId`), so a word like `paid` is not
+  read as `pa` + `id`.
+- Types are compared by family: all integer sizes match each other, and text,
+  varchar and char match each other. Anything else must be the same base type.
