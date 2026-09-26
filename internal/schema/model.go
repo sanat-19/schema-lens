@@ -6,7 +6,10 @@
 // snapshots, so field names are part of the UI's contract.
 package schema
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Schema is everything we know about one database at one moment.
 type Schema struct {
@@ -135,3 +138,23 @@ const (
 	SeverityMedium = "medium"
 	SeverityLow    = "low"
 )
+
+// Source says where a schema was read from, so a saved graph can say which
+// database it shows and the UI can offer to reconnect. It never holds a
+// password.
+type Source struct {
+	Host     string   `json:"host,omitempty"`
+	Port     int      `json:"port,omitempty"`
+	Database string   `json:"database,omitempty"`
+	User     string   `json:"user,omitempty"`
+	SSLMode  string   `json:"sslMode,omitempty"`
+	Schemas  []string `json:"schemas,omitempty"`
+}
+
+// Label is a short human name like "shop on db.internal:5432".
+func (s Source) Label() string {
+	if s.Host == "" {
+		return s.Database
+	}
+	return fmt.Sprintf("%s on %s:%d", s.Database, s.Host, s.Port)
+}
