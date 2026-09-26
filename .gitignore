@@ -1,0 +1,13 @@
+# build output
+/bin/
+/schemalens
+
+# local snapshots and exports
+*.snapshot.json
+/snapshot.json
+
+# editors
+.idea/
+.vscode/
+*.swp
+.DS_Store

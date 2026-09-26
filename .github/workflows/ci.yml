@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # The same Postgres 16 as docker-compose.yml, so the integration tests
+    # run against the demo schema on every push.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: schemalens
+          POSTGRES_PASSWORD: schemalens
+          POSTGRES_DB: shop
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U schemalens -d shop"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      SCHEMALENS_TEST_DSN: postgres://schemalens:schemalens@localhost:5432/shop?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Load the demo schema
+        run: psql "$SCHEMALENS_TEST_DSN" -v ON_ERROR_STOP=1 -q -f testdata/sample_schema.sql
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
+
+      - name: Tests (including the ones that need Postgres)
+        run: go test -race -count=1 ./...
