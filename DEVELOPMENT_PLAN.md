@@ -313,7 +313,7 @@ where it should *not* fire, and the sample database shows all seven kinds.
 
 ---
 
-## Step 10 — Mermaid export and snapshots  `[ ]`
+## Step 10 — Mermaid export and snapshots  `[x]`
 
 **Why.** People want to paste a diagram into a README or PR, and sometimes
 look at a schema without database access (on a plane, or a schema from a

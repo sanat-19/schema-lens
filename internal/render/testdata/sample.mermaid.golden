@@ -1,0 +1,30 @@
+erDiagram
+    billing_payments {
+        bigint id PK
+        bigint user_id FK
+    }
+    categories {
+        integer id PK
+        integer parent_id FK
+    }
+    products {
+        bigint id PK
+        numeric price
+    }
+    reviews {
+        bigint id PK
+        bigint product_id
+    }
+    user_profiles {
+        bigint id PK
+        bigint user_id FK, UK
+    }
+    users {
+        bigint id PK
+        character_varying email UK "Login 'email'"
+        timestamp_with_time_zone created_at
+    }
+    billing_payments }o--|| users : "user_id"
+    categories }o--o| categories : "parent_id"
+    user_profiles |o--|| users : "user_id"
+    reviews }o..|| products : "product_id (inferred)"

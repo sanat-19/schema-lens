@@ -107,3 +107,19 @@ matches are still one-to-one, so the brief's cases behave the same.
 
 Every suggestion is checked against the demo database by running it inside
 a transaction that is rolled back.
+
+### Mermaid: entity names and types are simplified
+
+Mermaid only accepts letters, digits, `_` and `-` in entity names and
+attribute types. So `billing.payments` becomes `billing_payments` (tables in
+`public` keep their plain name), and types lose their modifier and spaces:
+`character varying(255)` becomes `character_varying`. The diagram is for
+reading relationships, and the JSON export keeps the exact types. The output
+is checked with Mermaid 11's own parser.
+
+### `snapshot` is `export --format json` to a file
+
+They produce the same JSON, relations and findings included, so `serve
+--from` doesn't need to recompute anything. `snapshot` exists as its own
+command because "save this to look at later" is a different intent from
+"print this", and it says what it saved.

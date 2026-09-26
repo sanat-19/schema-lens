@@ -10,6 +10,7 @@ import (
 	"github.com/sanat-19/schema-lens/internal/analyze"
 	"github.com/sanat-19/schema-lens/internal/graph"
 	"github.com/sanat-19/schema-lens/internal/postgres"
+	"github.com/sanat-19/schema-lens/internal/render"
 	"github.com/sanat-19/schema-lens/internal/schema"
 )
 
@@ -23,21 +24,48 @@ func runExport(args []string, stdout, stderr io.Writer) error {
 	if err := parse(fs, args); err != nil {
 		return err
 	}
-	if *format != "json" {
-		return usagef("unknown --format %q (want json)", *format)
+	var write func(io.Writer, *schema.Schema) error
+	switch *format {
+	case "json":
+		write = schema.WriteJSON
+	case "mermaid":
+		write = render.Mermaid
+	default:
+		return usagef("unknown --format %q (want json or mermaid)", *format)
 	}
 
 	s, err := loadFromDatabase(db)
 	if err != nil {
 		return err
 	}
-	return writeOutput(*out, stdout, func(w io.Writer) error {
-		return schema.WriteJSON(w, s)
-	})
+	return writeOutput(*out, stdout, func(w io.Writer) error { return write(w, s) })
 }
 
+// runSnapshot saves the schema to a file so it can be viewed later with
+// "serve --from", without access to the database. A snapshot is the same
+// JSON that "export --format json" prints, relations and findings included.
 func runSnapshot(args []string, stderr io.Writer) error {
-	return usagef("snapshot is not built yet")
+	fs := newFlagSet("snapshot", stderr)
+	var db dbFlags
+	db.register(fs)
+	out := fs.String("o", "", "file to write the snapshot to (required)")
+	if err := parse(fs, args); err != nil {
+		return err
+	}
+	if *out == "" {
+		return usagef("snapshot needs -o <file>")
+	}
+
+	s, err := loadFromDatabase(db)
+	if err != nil {
+		return err
+	}
+	if err := writeOutput(*out, nil, func(w io.Writer) error { return schema.WriteJSON(w, s) }); err != nil {
+		return err
+	}
+	fmt.Fprintf(stderr, "Saved %d tables, %d relations and %d findings to %s\n",
+		len(s.Tables), len(s.Relations), len(s.Findings), *out)
+	return nil
 }
 
 func runServe(args []string, stderr io.Writer) error {
