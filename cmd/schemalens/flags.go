@@ -21,19 +21,30 @@ func (f *dbFlags) register(fs *flag.FlagSet) {
 
 // connection returns the DSN to use and the schemas to read.
 func (f *dbFlags) connection() (dsn string, schemas []string, err error) {
-	dsn = f.dsn
-	if dsn == "" {
-		dsn = os.Getenv("DATABASE_URL")
-	}
+	dsn = f.dsnOrEnv()
 	if dsn == "" {
 		return "", nil, usagef("no database: pass --dsn or set DATABASE_URL")
 	}
-	for _, s := range strings.Split(f.schemas, ",") {
-		if s = strings.TrimSpace(s); s != "" {
-			schemas = append(schemas, s)
+	return dsn, splitList(f.schemas), nil
+}
+
+// dsnOrEnv is --dsn, or $DATABASE_URL, or empty.
+func (f *dbFlags) dsnOrEnv() string {
+	if f.dsn != "" {
+		return f.dsn
+	}
+	return os.Getenv("DATABASE_URL")
+}
+
+// splitList turns "public, billing" into ["public", "billing"].
+func splitList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
 		}
 	}
-	return dsn, schemas, nil
+	return out
 }
 
 // newFlagSet makes a FlagSet that reports errors to us instead of exiting.

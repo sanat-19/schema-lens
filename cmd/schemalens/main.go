@@ -20,12 +20,15 @@ const (
 const usage = `SchemaLens: see your PostgreSQL schema as a live relationship graph.
 
 Usage:
-  schemalens serve    --dsn <url> [--schemas public,billing] [--addr 127.0.0.1:8080] [--open]
+  schemalens serve    [--addr 127.0.0.1:8080] [--open] [--data-dir dir]
+  schemalens serve    --dsn <url> [--schemas public,billing] [--addr ...] [--open]
   schemalens serve    --from snapshot.json
   schemalens snapshot --dsn <url> [--schemas ...] -o snapshot.json
   schemalens export   --dsn <url> [--schemas ...] --format json|mermaid [-o file]
 
-The connection string can also come from the DATABASE_URL environment variable.
+"serve" on its own opens a page where you enter a connection URL or credentials,
+and where saved graphs are listed. The connection string can also come from
+--dsn or the DATABASE_URL environment variable.
 SchemaLens only ever reads: every session is read-only.
 
 Run "schemalens <command> -h" for the flags of one command.
