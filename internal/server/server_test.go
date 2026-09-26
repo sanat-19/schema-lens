@@ -189,14 +189,14 @@ func TestWatcherFollowsTheDatabase(t *testing.T) {
 	// A migration adds a table.
 	db.set("v2", "users", "orders")
 	waitFor(t, "the new table to show up", func() bool {
-		s, _ := hub.Current()
+		s, _, _ := hub.Current()
 		return len(s.Tables) == 2
 	})
 
 	// The database goes away: keep the last schema, say we're reconnecting.
 	db.setDown(true)
 	waitFor(t, "state to become reconnecting", func() bool { return hub.Status().State == "reconnecting" })
-	if s, _ := hub.Current(); len(s.Tables) != 2 {
+	if s, _, _ := hub.Current(); len(s.Tables) != 2 {
 		t.Error("the last good schema must stay while the database is down")
 	}
 

@@ -106,12 +106,12 @@ func (h *Hub) setState(state, errText string) {
 	h.broadcast(Event{Name: "status", Status: h.status})
 }
 
-// Current returns the schema and its JSON. Both are nil before the first
-// Publish.
-func (h *Hub) Current() (*schema.Schema, []byte) {
+// Current returns the schema, its JSON and its version, all from the same
+// moment. The schema and JSON are nil before the first Publish.
+func (h *Hub) Current() (s *schema.Schema, body []byte, version int) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return h.current, h.body
+	return h.current, h.body, h.status.Version
 }
 
 // Status returns the current status.

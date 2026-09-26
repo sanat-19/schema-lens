@@ -129,6 +129,7 @@ func duplicateIndexes(t *schema.Table) []indexFinding {
 				Kind:     KindDuplicateIndex,
 				Severity: schema.SeverityMedium,
 				Table:    t.ID(),
+				Index:    ix.Name,
 				Title:    fmt.Sprintf("Index %s duplicates %s", ix.Name, keep.Name),
 				Detail: fmt.Sprintf("Both index (%s) the same way. Every insert and update on %s "+
 					"writes to both, and %s uses %s of disk for nothing.",
@@ -184,6 +185,7 @@ func redundantIndexes(t *schema.Table) []indexFinding {
 				Kind:     KindRedundantIndex,
 				Severity: schema.SeverityLow,
 				Table:    t.ID(),
+				Index:    short.Name,
 				Title:    fmt.Sprintf("Index %s is covered by %s", short.Name, long.Name),
 				Detail: fmt.Sprintf("%s (%s) starts with the same columns as %s (%s), so queries can use "+
 					"the longer one instead. Dropping it saves %s and makes writes to %s cheaper.",
@@ -216,6 +218,7 @@ func unusedIndexes(t *schema.Table, rels []schema.Relation) []indexFinding {
 			Kind:     KindUnusedIndex,
 			Severity: schema.SeverityLow,
 			Table:    t.ID(),
+			Index:    ix.Name,
 			Title:    fmt.Sprintf("Index %s has never been used", ix.Name),
 			Detail: fmt.Sprintf("No query has scanned %s since statistics were last reset, yet it takes %s "+
 				"and every write to %s has to update it. The count starts again after a stats reset "+

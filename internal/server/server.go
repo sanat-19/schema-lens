@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/sanat-19/schema-lens/internal/render"
@@ -47,11 +48,13 @@ func (s *server) schema(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_, body := s.hub.Current()
+	_, body, version := s.hub.Current()
 	if body == nil {
 		http.Error(w, "schema not loaded yet", http.StatusServiceUnavailable)
 		return
 	}
+	// The UI compares this with the versions announced on /api/events.
+	w.Header().Set("X-Schema-Version", strconv.Itoa(version))
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write(body)
@@ -64,7 +67,7 @@ func (s *server) status(w http.ResponseWriter, r *http.Request) {
 // mermaid returns the current schema as a Mermaid erDiagram, so it is always
 // as live as the graph.
 func (s *server) mermaid(w http.ResponseWriter, r *http.Request) {
-	current, _ := s.hub.Current()
+	current, _, _ := s.hub.Current()
 	if current == nil {
 		http.Error(w, "schema not loaded yet", http.StatusServiceUnavailable)
 		return

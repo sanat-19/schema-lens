@@ -97,7 +97,7 @@ func runServe(args []string, stderr io.Writer) error {
 		go watcher.Run(ctx)
 
 		reload = watcher.Reload
-		current, _ := hub.Current()
+		current, _, _ := hub.Current()
 		what = fmt.Sprintf("live view of %s (%d tables), checking for changes every %s",
 			current.Database, len(current.Tables), *watchEvery)
 	}

@@ -123,7 +123,8 @@ const (
 type Finding struct {
 	Kind       string `json:"kind"`
 	Severity   string `json:"severity"`
-	Table      string `json:"table"` // table ID
+	Table      string `json:"table"`           // table ID
+	Index      string `json:"index,omitempty"` // for index findings, which index
 	Title      string `json:"title"`
 	Detail     string `json:"detail"`
 	Suggestion string `json:"suggestion,omitempty"` // SQL to copy; SchemaLens never runs it
