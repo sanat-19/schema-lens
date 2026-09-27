@@ -22,30 +22,29 @@ an interactive graph that follows the database as you migrate it.
   password, and the graph is drawn. Switch databases without restarting.
 - **Saved graphs.** Save a graph with its layout and open it again later,
   without the database. The password is never saved.
-- **One binary.** The UI is built in, works offline, and needs no Node or CDN.
+- **No CDN.** The page's libraries are checked in, so it works offline.
 
 ## Quickstart
 
-You need Go 1.25+ and Docker.
+You need Go 1.25+, Node 22+ and a PostgreSQL database to look at.
 
 ```sh
 git clone https://github.com/sanat-19/schema-lens
 cd schema-lens
-make demo
+make run
 ```
 
-`make demo` starts Postgres 16 with a demo shop database (17 tables, one of
-each problem SchemaLens looks for) and opens the UI. To watch the live
-updates, keep the page open and change the schema in another terminal:
-
-```sh
-docker compose exec postgres psql -U schemalens -d shop \
-  -c "CREATE TABLE wishlists (id bigserial PRIMARY KEY, user_id bigint REFERENCES users(id))"
-```
+`make run` starts the backend (the API, on 127.0.0.1:8080) and the frontend
+(the page, on http://localhost:5173), and opens the Connect page in your
+browser. Ctrl+C stops both. Enter
+your database's details and the graph is drawn. Keep the page open while
+you change the schema and it updates live. **Exit**, at the top of the left
+panel, closes the graph and takes you back to the Connect page.
 
 ## Connect from the browser
 
-Run `schemalens serve` with no flags and open http://127.0.0.1:8080. The page
+Start the backend with `go run ./backend` and the frontend with `npm run dev`
+in `frontend/`, or both with `make run`. The page at http://localhost:5173
 asks for a database: paste a `postgres://` URL, or enter host, port,
 database, user, password and SSL mode. Optionally, list which schemas to read.
 The graph is drawn as soon as the schema has been read, and it stays live.
@@ -75,38 +74,17 @@ keep them somewhere else, e.g. next to a project.
 ## Usage
 
 ```
-schemalens serve    [--addr 127.0.0.1:8080] [--open] [--data-dir dir]
-schemalens serve    --dsn <url> [--schemas public,billing] [--addr ...] [--open]
-schemalens serve    --from snapshot.json
-schemalens snapshot --dsn <url> [--schemas ...] -o snapshot.json
-schemalens export   --dsn <url> [--schemas ...] --format json|mermaid [-o file]
+go run ./backend [--addr 127.0.0.1:8080] [--data-dir dir]
 ```
 
 | Flag | Meaning |
 |---|---|
-| `--dsn` | Connection string. Defaults to `$DATABASE_URL`. With neither, `serve` opens on the Connect screen. The password is never printed. |
-| `--schemas` | Schemas to read. Defaults to every non-system schema. |
-| `--addr` | Where to serve the UI. Defaults to `127.0.0.1:8080`, local only, because it shows your schema. |
-| `--open` | Open the UI in your browser. |
-| `--from` | Show a saved snapshot instead of a live database. |
+| `--addr` | Where to serve the API. Defaults to `127.0.0.1:8080`, local only, because it shows your schema. If you change it, start the frontend with `SCHEMALENS_API=http://host:port`. |
 | `--data-dir` | Where saved graphs are kept (default: your config directory). |
-| `--watch-interval` | How often to check for schema changes (default `2s`). |
-| `--stats-interval` | How often to refresh row counts, sizes and index usage (default `30s`). |
 
-Exit codes: `0` success, `1` bad command line, `2` couldn't connect or read
-the database.
-
-**Snapshots** let you look at a schema later without access to the
-database, on a plane or when a colleague sends you theirs:
-
-```sh
-schemalens snapshot --dsn "$PROD_READONLY_URL" -o prod.json
-schemalens serve --from prod.json
-```
-
-**Mermaid** output renders straight from a Markdown code block on GitHub and
-GitLab. It's also available live at `/api/export/mermaid` while `serve` is
-running.
+Everything else happens on the page. **Mermaid** in the toolbar downloads the
+graph as a Mermaid `erDiagram`, which renders straight from a Markdown code
+block on GitHub and GitLab.
 
 ## The UI
 
@@ -154,28 +132,36 @@ partitioned tables.
 ```mermaid
 flowchart LR
     PG[(PostgreSQL)] -- pg_catalog, read-only --> I[postgres<br/>Introspect]
-    PG -- fingerprint every 2s --> W[server<br/>Watcher]
+    PG -- fingerprint every 2s --> W[session<br/>Watcher]
     W -- changed? --> I
-    I --> M[schema<br/>model]
+    I --> M[models<br/>Schema]
     M --> G[graph<br/>relations]
     G --> A[analyze<br/>findings]
-    A --> H[server<br/>Hub]
-    H -- /api/schema --> UI[web UI<br/>Cytoscape + dagre]
-    H -- /api/events SSE --> UI
-    M -. snapshot JSON .-> H
+    A --> H[session<br/>Hub]
+    H --> API[router + api<br/>HTTP]
+    API -- /api/schema --> UI[web UI<br/>Cytoscape + dagre]
+    API -- /api/events SSE --> UI
     M --> R[render<br/>Mermaid]
 ```
 
+The code is in three layers. `backend/api/` handles HTTP and nothing else: it reads
+what the page sends, calls a package in `pkg/`, and writes the answer back.
+`pkg/` does the work. `backend/models/` holds the types every layer passes around.
+
 | Package | Job |
 |---|---|
-| `internal/schema` | The database-agnostic model: tables, columns, keys, indexes, relations, findings. Everything else reads it. |
-| `internal/postgres` | The only package that talks to Postgres. It reads `pg_catalog` in one read-only transaction, one batched query per kind of object, and computes the change fingerprint. |
-| `internal/graph` | Relations from FKs (cardinality, optionality) and relations guessed from column names. |
-| `internal/analyze` | The seven checks above. These are pure functions over the model, unit-tested without a database. |
-| `internal/render` | Mermaid `erDiagram` export. |
-| `internal/server` | The HTTP API, the Server-Sent Events stream, the watcher that keeps the schema current, and switching between databases and saved graphs. |
-| `internal/store` | Saved graphs on disk: one JSON file each, written atomically, readable only by you. |
-| `web/` | The UI: plain HTML, CSS and JS, embedded in the binary. |
+| `backend/models/` | Every data type: the database-agnostic schema (tables, columns, keys, indexes, relations, findings), saved graphs, the live status, and the request and response bodies of the API. Plus small functions on them. |
+| `backend/api/` | The HTTP handlers: the Server-Sent Events stream, and turning errors into status codes. |
+| `backend/pkg/session` | What's on screen: connecting to databases and switching between them and saved graphs, the watcher that keeps the schema current, and the hub that tells browsers about changes. |
+| `backend/pkg/postgres` | The only package that talks to Postgres. It reads `pg_catalog` in one read-only transaction, one batched query per kind of object, and computes the change fingerprint. |
+| `backend/pkg/graph` | Relations from FKs (cardinality, optionality) and relations guessed from column names. |
+| `backend/pkg/analyze` | The seven checks above. These are pure functions over the model, unit-tested without a database. |
+| `backend/pkg/render` | Mermaid `erDiagram` export. |
+| `backend/pkg/store` | Saved graphs on disk: one JSON file each, written atomically, readable only by you. |
+| `backend/router` | Which URL goes to which `api` handler, serving the frontend's files, and the guard that stops other websites from using the API. |
+| `backend/pkg/connect` | Turns the Connect form into a read-only Postgres connection whose every read comes with relations and findings. |
+| `backend/main.go` | Reads `--addr` and `--data-dir`, creates the session, loads the router and runs `ListenAndServe`. |
+| `frontend/` | The page: plain HTML, CSS and JS, served by Vite. Vite forwards `/api` to the backend, so the page and the API share an origin. |
 
 **Staying live without writing to your database:** Postgres can push schema
 changes through event triggers, but creating one is a write that needs
@@ -194,16 +180,28 @@ open database connections, so other websites must not be able to call it
 through your browser. The server only accepts JSON POSTs (a cross-site JSON
 POST needs a CORS preflight, which it never allows), rejects foreign
 `Origin` headers, and, when listening on localhost, rejects requests whose
-`Host` isn't localhost (which stops DNS rebinding).
+`Host` isn't localhost (which stops DNS rebinding). The Vite dev server
+passes the browser's `Host` through unchanged so these checks still work.
 
 ## Development
 
 ```sh
-make db-up             # Postgres 16 + demo schema on localhost:5433
+make run               # backend + frontend, opens the Connect page
+make backend           # just the API, on 127.0.0.1:8080
+make frontend          # just the page, on http://localhost:5173
+make build             # bin/schemalens and frontend/dist
 make test              # unit tests, no database needed
-make test-integration  # plus the tests that need the demo database
+make test-integration  # plus the tests that need Postgres (see below)
 make lint              # go vet + staticcheck
-make db-reset          # reload the demo schema from scratch
+```
+
+The integration tests need a Postgres loaded with
+`testdata/sample_schema.sql` (17 tables, one of each problem SchemaLens looks
+for):
+
+```sh
+psql "$SCHEMALENS_TEST_DSN" -v ON_ERROR_STOP=1 -f testdata/sample_schema.sql
+make test-integration
 ```
 
 CI runs all of this against a Postgres 16 service container on every push.

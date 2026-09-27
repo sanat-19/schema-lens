@@ -1,32 +1,36 @@
-# The demo database from docker-compose.yml.
-DEMO_DSN ?= postgres://schemalens:schemalens@localhost:5433/shop?sslmode=disable
+.PHONY: run backend frontend build test test-integration lint
 
-.PHONY: build test test-integration lint db-up db-down db-reset demo
+# Starts the backend and the frontend together; Ctrl+C stops both. The
+# browser opens on the Connect page.
+run:
+	$(MAKE) -j2 backend frontend
 
-build:
-	go build -o bin/schemalens ./cmd/schemalens
+# The API on 127.0.0.1:8080.
+backend:
+	go run ./backend
+
+# The page on http://localhost:5173, forwarding /api to the backend.
+frontend: frontend/node_modules
+	cd frontend && npm run dev
+
+frontend/node_modules: frontend/package.json frontend/package-lock.json
+	cd frontend && npm ci
+	@touch $@
+
+# bin/schemalens (the API) and frontend/dist (the page).
+build: frontend/node_modules
+	go build -o bin/schemalens ./backend
+	cd frontend && npm run build
 
 test:
 	go test ./...
 
-# Runs the tests that need a real Postgres loaded with testdata/sample_schema.sql.
+# Runs the tests that need a real Postgres. Point SCHEMALENS_TEST_DSN at an
+# empty database loaded with testdata/sample_schema.sql.
 test-integration:
-	SCHEMALENS_TEST_DSN="$(DEMO_DSN)" go test ./... -count=1
+	@test -n "$$SCHEMALENS_TEST_DSN" || { echo "Set SCHEMALENS_TEST_DSN to a Postgres loaded with testdata/sample_schema.sql"; exit 1; }
+	go test ./... -count=1
 
 lint:
 	go vet ./...
 	go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
-
-db-up:
-	docker compose up -d --wait
-
-db-down:
-	docker compose down
-
-# Drop the data volume so sample_schema.sql is loaded again from scratch.
-db-reset:
-	docker compose down -v
-	docker compose up -d --wait
-
-demo: db-up
-	DATABASE_URL="$(DEMO_DSN)" go run ./cmd/schemalens serve --open

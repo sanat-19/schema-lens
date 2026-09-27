@@ -54,10 +54,12 @@ So every catalog query sees the same moment in time. Without it, a migration
 landing between two queries could give us an FK pointing at a table we
 didn't see.
 
-### Demo database runs on port 5433
+### No bundled demo database
 
-`docker-compose.yml` maps Postgres to 5433 so it doesn't clash with a
-Postgres many developers already have on 5432.
+`make run` opens the Connect page instead of starting a Docker Postgres with
+a demo schema: SchemaLens is for looking at your own databases, and Docker
+shouldn't be a requirement. `testdata/sample_schema.sql` stays as the fixture
+for the integration tests.
 
 ### One-to-one when the FK columns *contain* a unique key
 
@@ -146,9 +148,10 @@ command because "save this to look at later" is a different intent from
 
 ### UI: vendored files
 
-`cytoscape-dagre` 4.x bundles the dagre layout engine, so `web/vendor/` holds
+`cytoscape-dagre` 4.x bundles the dagre layout engine, so `frontend/public/vendor/` holds
 two scripts (`cytoscape.min.js`, `cytoscape-dagre.js`) instead of the three
-the brief listed. Versions and licences are in `web/vendor/VERSIONS`.
+the brief listed. Versions and licences are in `frontend/public/vendor/VERSIONS`.
+They stay plain `<script>` tags, which Vite copies as they are.
 
 ### UI: each table is an SVG card
 
@@ -244,7 +247,7 @@ back where it was left.
 - **Colours go out in alphabetical order**, from a fixed palette of eight
   (red, blue, green, purple, teal, amber, pink, brown). The same database
   always gets the same colours, and the page and the graph work them out the
-  same way (`web/colors.js`). The trade-off: a new schema that sorts earlier
+  same way (`frontend/colors.js`). The trade-off: a new schema that sorts earlier
   shifts the colours of the ones after it. We preferred predictable colours
   over hashing names, which would clash as soon as two schemas hashed to the
   same colour.
@@ -256,3 +259,37 @@ back where it was left.
 Checked in headless Chromium in both themes: `billing` is red-tinted,
 `public` is plain, and a `cart` schema created live in psql turned blue
 within seconds while `billing` stayed red.
+
+### Frontend and backend run separately
+
+The page used to be built into the Go binary. Now `frontend/` is a Vite
+project and the backend only serves the API. The Vite server forwards
+`/api` to the backend instead of the page calling the backend's port
+directly, so:
+
+- the page and the API share an origin, and the page's code still calls
+  plain `/api/...`;
+- the backend needs no CORS, and its cross-site guard (JSON only, same
+  Origin, localhost Host) works unchanged. `changeOrigin` stays off in
+  `vite.config.js` for exactly that reason.
+
+The cost: two processes instead of one binary, and Node to run the page.
+While the backend is down, Vite answers `/api/events` with an HTTP error,
+and `EventSource` gives up for good on one of those, unlike a dropped
+connection. `live.js` opens a new stream when that happens.
+
+
+### The backend is only the API server
+
+Once the page moved to Vite, the command line's `serve`, `snapshot` and
+`export` commands had little left to do, so they were removed: `go run
+./backend` starts the API and that's all. Connecting happens on the page,
+and Mermaid export is the toolbar button (`/api/export/mermaid`). The
+entries above about `snapshot`, `serve --from` and `--dsn` describe the
+earlier command line.
+
+What went with them: dumping a schema from the terminal, viewing a snapshot
+file without a database (saved graphs cover most of that), and the
+`--dsn`/`$DATABASE_URL`, `--schemas`, `--watch-interval` and
+`--stats-interval` flags. The watch and stats intervals are fixed at 2s and
+30s in `main.go`.

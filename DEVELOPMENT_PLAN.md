@@ -130,7 +130,7 @@ relationships make sense, we need the list of tables.
 
 **Packages.** Only pgx from step 1.
 
-**The model starts here.** `internal/schema/model.go` gets its first type:
+**The model starts here.** `models/schema.go` gets its first type:
 `Table`, with `ID() = "schema.name"`. This ID is the key we use everywhere,
 including in the browser. The model knows nothing about Postgres, so a MySQL
 reader can fill it later.
@@ -220,7 +220,7 @@ It's much easier to spot a wrong column name in a JSON file than in a graph.
 
 **What we need.**
 - `schemalens export --format json [-o file]`.
-- The `Introspector` interface in `internal/schema`, with the Postgres reader
+- The `Introspector` interface in `models`, with the Postgres reader
   behind it. It's the one interface we add early, because we know MySQL is
   coming.
 
@@ -240,7 +240,7 @@ we planted in step 0.
 **Why.** A list of foreign keys isn't a graph yet. We need edges with meaning:
 which table depends on which, one-to-one or many-to-one, required or optional.
 
-**What we need.** In `internal/graph`:
+**What we need.** In `backend/pkg/graph`:
 - One relation per FK constraint. A composite FK is one edge, not one per
   column.
 - **One-to-one** if the FK columns exactly equal the child's primary key or one
@@ -287,7 +287,7 @@ don't guess across incompatible types or composite PKs.
 **Why.** A pretty graph is nice. Telling a developer "this will be slow, and
 here's the SQL to fix it" is useful. This is where SchemaLens starts helping.
 
-**What we need.** In `internal/analyze`, one check per kind:
+**What we need.** In `backend/pkg/analyze`, one check per kind:
 
 | Kind | Severity | Why it matters |
 |---|---|---|
@@ -325,7 +325,7 @@ colleague).
 - `schemalens serve --from snapshot.json` views it with no database.
 
 **Packages.** Standard library only. The Mermaid test compares against a
-golden file in `internal/render/testdata`.
+golden file in `backend/pkg/render/testdata`.
 
 **How it helps.** The snapshot also makes the UI testable without Postgres,
 and it's the first step toward Phase 3, where we'll ship a production schema
@@ -346,10 +346,10 @@ without anyone pressing refresh.
 - We can't let Postgres tell us about changes. Event triggers +
   `LISTEN/NOTIFY` need `CREATE EVENT TRIGGER`, which is a write and needs
   superuser. So we ask.
-- `internal/postgres/fingerprint.go`: one small query that returns an md5 of
+- `backend/pkg/postgres/fingerprint.go`: one small query that returns an md5 of
   everything structural (tables, columns, types, nullability, defaults,
   constraints, indexes, comments). It runs in milliseconds.
-- `internal/server/watcher.go`: every 2s (`--watch-interval`) compare the
+- `backend/pkg/session/watcher.go`: every 2s (`--watch-interval`) compare the
   fingerprint. If it's the same, do nothing. If it changed, re-read the
   schema, rebuild relationships and findings, and swap the cached copy.
 - Row counts, sizes and scan counts change all the time but don't change the
@@ -382,7 +382,7 @@ schema within a few seconds, with no restart.
 **Packages.**
 - `net/http` with Go 1.22+ route patterns (`GET /api/schema`). No framework
   needed.
-- `embed` to put the UI inside the binary. A tiny `web/embed.go` exports the
+- `embed` to put the UI inside the binary. A tiny `frontend/embed.go` exports the
   files, because `go:embed` can't reach up into a parent folder.
 - SSE instead of WebSockets: the data only flows one way (server → browser),
   it's plain HTTP, the browser reconnects by itself, and Go needs no extra
@@ -417,7 +417,7 @@ we alter a table.
   selection, styling and PNG export, and stays fast with hundreds of nodes.
 - **cytoscape-dagre** (which bundles **dagre**): a layered left-to-right
   layout, which fits "child points to parent" naturally.
-- Both are **copied into `web/vendor/`**, so the tool works offline and
+- Both are **copied into `frontend/vendor/`**, so the tool works offline and
   doesn't depend on a CDN.
 - No React and no build step. Plain HTML, CSS and JS are enough for one page,
   and anyone can read them.
@@ -457,7 +457,7 @@ runnable SQL.
 without redrawing everything and losing the user's place.
 
 **What we need.**
-- `web/live.js` listens on `/api/events`, then fetches `/api/schema`.
+- `frontend/live.js` listens on `/api/events`, then fetches `/api/schema`.
 - Compare old and new by table ID and relation ID:
   - new tables fade in near their neighbours
   - dropped tables fade out
@@ -637,7 +637,7 @@ relation crosses from one schema into another.
 - It follows live changes: create a new schema with a table and it gets a
   colour straight away.
 
-**Packages.** None. A small `web/colors.js` shared by the graph and the
+**Packages.** None. A small `frontend/colors.js` shared by the graph and the
 page.
 
 **Done when.** In a browser test, `billing` tables are red-tinted, `public`
